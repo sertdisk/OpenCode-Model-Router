@@ -1,0 +1,13 @@
+{
+  "name": "opencode-model-router",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "OpenCode Model Router — per-agent primary/secondary/tertiary model routing with provider-qualified fallback",
+  "peerDependencies": {
+    "@opencode-ai/plugin": "*"
+  },
+  "scripts": {
+    "check": "node --check src/model-router.js",
+    "install-dev": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/install-dev.ps1"
+  }
+}
