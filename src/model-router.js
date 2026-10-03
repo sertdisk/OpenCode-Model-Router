@@ -1,5 +1,5 @@
 // OpenCode Model Router (display ad) - per-agent primary/secondary/tertiary model routing
-// model-ata (v2 plugin) — kilitli kararlar özeti:
+// OpenCode Model Router iskeleti (v2 plugin) — kilitli kararlar özeti:
 //  1) Zincir girişi { providerID, id, variant? }; dedup anahtarı providerID/id/variant — model adı tek başına yok.
 //  2) Ajan keşfi YALNIZCA `await ctx.agent.transform(draft => { listed = [...draft.list()]; })` capture kalıbıyla
 //     (dönüş değeri liste sanılmaz; guard yoksa sessiz geç); elemanlar AgentV2Info objesi → `id` alanı okunur,
@@ -8,7 +8,7 @@
 //     bilinmeyenler alfabetik "diğer" kovası.
 //  3) hasOhMy probe: ctx üzerinde oh-my izi veya config `agents` bloğu varsa oh-my yolu, yoksa host yolu —
 //     ŞİMDİ sadece tespit + log, yazma YOK.
-//  4) `/model-ata` komutu: `execute: async (invocation) => ...`; önce `invocation?.sessionID` varsa
+//  4) `/model-router` komutu: `execute: async (invocation) => ...`; önce `invocation?.sessionID` varsa
 //     `ctx.session.prompt({ sessionID, text: summary })`, yoksa host fallback'leri; içerik SALT-OKUNUR özet
 //     (picker sonraki adım).
 //  5) retry hook (`await ctx.session.hook("retry", ...)`) şimdilik sadece loglar, event.decision'a DOKUNMAZ
@@ -143,7 +143,7 @@ async function setup(ctx) {
     const { hasOhMy, signals } = probeOhMy();
     const assign = await readAssignments(names);
     const lines = [
-      "## model-ata (salt-okunur özet)",
+      "## OpenCode Model Router (salt-okunur özet)",
       `- mod: ${hasOhMy ? "oh-my (ileride agents.<ajan>.model=[p,s,t])" : "host (ileride agent.<ad>.model=primary + state dosyası)"}${signals.length ? ` — iz: ${signals.join(", ")}` : ""}`,
       `- ajanlar (${names.length}):`,
       ...names.map((n) => `  - ${n}: ${assign[n] ?? "—"}`),
@@ -164,13 +164,13 @@ async function setup(ctx) {
     // boot log asla setup'u devirmez
   }
 
-  // Karar 4 — `/model-ata` komutu (guard'lı; execute şimdilik salt-okunur özet yazar).
+  // Karar 4 — `/model-router` komutu (guard'lı; execute şimdilik salt-okunur özet yazar).
   try {
     if (typeof ctx.command?.transform === "function") {
       track(
         await ctx.command.transform((draft) =>
           draft.add({
-            name: "model-ata",
+            name: "model-router",
             description: "Ajan→model atamalarının salt-okunur özeti (picker sonraki adım)",
             execute: async (invocation) => {
               const summary = await buildSummary();

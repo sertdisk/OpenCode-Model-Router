@@ -7,13 +7,13 @@ provider-nitelikli ref (`{ providerID, id, variant? }`), oh-my stratejisi
 ## Kurulum (dev)
 
 1. Repoyu klonla.
-2. `tools\install-dev.ps1` calistir (repo -> `C:\Users\Hb\.config\opencode\plugins\model-ata.js` kopyalar).
+2. `tools\install-dev.ps1` calistir (repo -> `C:\Users\Hb\.config\opencode\plugins\model-router.js` kopyalar).
 3. Opencode'u restart et.
-4. `/model-ata` komutuyla salt-okunur ozeti gor.
+4. `/model-router` komutuyla salt-okunur ozeti gor.
 
 ## Durum (iskelet v0.1.0)
 
-- Salt-okunur ozet (`/model-ata`) + log-only retry hook.
+- Salt-okunur ozet (`/model-router`) + log-only retry hook.
 - Picker UI / yazma (oh-my/host) / retry steering sirada.
 
 ## Dogrulama
