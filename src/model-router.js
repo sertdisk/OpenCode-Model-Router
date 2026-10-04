@@ -118,27 +118,64 @@ async function setup(ctx) {
   // Katalog = opencode'un yukledigi aktif provider setidir (auth'suz provider katalogda
   // yoktur — bu yuzden yalnizca auth'lu saglayicilar listelenir; kural otomatik saglanir).
   // Gercek API: ctx.catalog.transform (v2 PluginContext'te model/provider/session alani yok).
+  // Filtre: SADECE enabled modeller listelenir (/models secicisiyle ayni kural).
+  //   - provider kaydi `disabled === true` ise o provider ATLANIR (devre-disi sayacina).
+  //   - model `info?.enabled !== true` ise ATLANIR (kapali sayacina; status'e bakilmaz).
+  // Guvenlik agi: filtre sonucu bossa filtre yok sayilip tumu alinir (bos picker'dan iyidir).
   // Bu probe asla setup'u devirmez (guard + try/catch).
   let cachedModels = null;
+  let probeDevreDisi = 0;
+  let probeKapali = 0;
+  let probeFallback = false;
   try {
     if (typeof ctx?.catalog?.transform === "function") {
       const found = [];
+      const foundAll = [];
+      let elendiDevreDisi = 0;
+      let elendiKapali = 0;
       await ctx.catalog.transform((draft) => {
-        const recs = draft.provider.list(); // readonly CatalogProviderRecord[]: { provider: {id,...}, models: ReadonlyMap<id, info> }
+        const recs = draft.provider.list(); // readonly CatalogProviderRecord[]: { provider: {id, disabled?, ...}, models: ReadonlyMap<id, ModelV2Info & {enabled}> }
         for (const rec of recs ?? []) {
           const pid = rec?.provider?.id;
           if (typeof pid !== "string") continue;
           let entries = [];
-          try { entries = rec.models instanceof Map ? [...rec.models.keys()] : Object.keys(rec.models ?? {}); } catch { continue; }
-          for (const mid of entries) if (typeof mid === "string" && mid.length > 0) found.push({ providerID: pid, id: mid });
+          try { entries = rec.models instanceof Map ? [...rec.models.entries()] : Object.entries(rec.models ?? {}); } catch { continue; }
+          if (rec?.provider?.disabled === true) {
+            for (const [mid] of entries) {
+              if (typeof mid !== "string" || mid.length === 0) continue;
+              foundAll.push({ providerID: pid, id: mid });
+              elendiDevreDisi += 1;
+            }
+            continue;
+          }
+          for (const [mid, info] of entries) {
+            if (typeof mid !== "string" || mid.length === 0) continue;
+            foundAll.push({ providerID: pid, id: mid });
+            if (info?.enabled !== true) {
+              elendiKapali += 1;
+              continue;
+            }
+            found.push({ providerID: pid, id: mid });
+          }
         }
       });
-      if (found.length > 0) cachedModels = dedupChain(found).map((e) => ({ providerID: e.providerID, id: e.id }));
+      let picked = found;
+      if (picked.length === 0 && foundAll.length > 0) {
+        picked = foundAll;
+        probeFallback = true;
+      }
+      probeDevreDisi = elendiDevreDisi;
+      probeKapali = elendiKapali;
+      if (picked.length > 0) cachedModels = dedupChain(picked).map((e) => ({ providerID: e.providerID, id: e.id }));
     }
   } catch { /* probe asla setup'u devirmez */ }
   try {
     const nProv = cachedModels != null ? new Set(cachedModels.map((m) => m.providerID)).size : 0;
-    console.log(`[model-router] catalog probe: ${cachedModels != null ? `${cachedModels.length} model / ${nProv} provider` : "katalog okunamadi"}`);
+    if (cachedModels != null) {
+      console.log(`[model-router] catalog probe: ${cachedModels.length} model / ${nProv} provider (${probeDevreDisi} elendi-devre-disi/${probeKapali} elendi-kapali${probeFallback ? ", filtre-bos-fallback" : ""})`);
+    } else {
+      console.log("[model-router] catalog probe: katalog okunamadi");
+    }
   } catch {
     // log asla setup'u devirmez
   }
@@ -180,7 +217,7 @@ async function setup(ctx) {
     const agentLines = names.map((n) => `  - ${n} (mevcut: ${assign[n] ?? "—"})`).join("\n");
     const modelBlock =
       cachedModels != null
-        ? `Model secenekleri (kesfedilen katalogdan, provider/id formatinda):\n${cachedModels.map((m) => `  - ${m.providerID}/${m.id}`).join("\n")}`
+        ? `Model secenekleri (kesfedilen katalogdan, provider/id formatinda; liste = opencode katalogundaki enabled modeller):\n${cachedModels.map((m) => `  - ${m.providerID}/${m.id}`).join("\n")}`
         : "Kesfedilmis model katalogu yok. Model listesini ASLA uydurma/tahmin etme. `question` ile SADECE ajan sorusunu sor, model sorularinda secenek sunma; once `opencode models` komutunun GERCEK ciktisini alip o ciktiyi kullaniciya gosterip onay iste. Onaylanan ciktidaki SADECE aktif (auth'lu) saglayici ve modelleri secenek yap. Ayni model farkli saglayicida AYRI secenektir (provider/id ciftiyle listele).";
     const applyBlock = hasOhMy
       ? "Secilen primary'yi HEMEN uygula: oh-my-oh-my slim config dosyasi (`oh-my-opencode-slim.json`) icinde `agents.<ajan>.model` alanina yaz. Boyle bir alan/blok yoksa host config'e dokunma, sadece state dosyasina yaz."
