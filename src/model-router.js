@@ -115,68 +115,30 @@ async function setup(ctx) {
     return { hasOhMy: signals.length > 0, signals };
   };
 
-  // Faz-2 — model katalogu defansif probe.
-  // Denenen alanlar: ctx.model.list | ctx.model.listModels | ctx.model.models |
-  //   ctx.models.list | ctx.catalog.list | ctx.catalog.listModels | ctx.catalog.models |
-  //   ctx.provider.list | ctx.provider.listModels | ctx.providers.list
-  // Bulunan normalize edilip `cachedModels: [{ providerID, id }]` tutulur; bulunamazsa null kalir.
-  // Bu probe asla setup'u devirmez (her aday typeof guard + try/catch icinde denenir).
+  // Katalog = opencode'un yukledigi aktif provider setidir (auth'suz provider katalogda
+  // yoktur — bu yuzden yalnizca auth'lu saglayicilar listelenir; kural otomatik saglanir).
+  // Gercek API: ctx.catalog.transform (v2 PluginContext'te model/provider/session alani yok).
+  // Bu probe asla setup'u devirmez (guard + try/catch).
   let cachedModels = null;
   try {
-    const candidates = [
-      ctx?.model?.list,
-      ctx?.model?.listModels,
-      ctx?.model?.models,
-      ctx?.models?.list,
-      ctx?.catalog?.list,
-      ctx?.catalog?.listModels,
-      ctx?.catalog?.models,
-      ctx?.provider?.list,
-      ctx?.provider?.listModels,
-      ctx?.providers?.list,
-    ];
-    for (const cand of candidates) {
-      if (cachedModels != null) break;
-      try {
-        if (typeof cand === "function") {
-          const raw = await cand.call(ctx?.model ?? ctx?.catalog ?? ctx?.provider ?? ctx?.providers ?? ctx);
-          const arr = Array.isArray(raw) ? raw : raw != null && Array.isArray(raw.models) ? raw.models : null;
-          if (arr != null) {
-            const norm = [];
-            for (const m of arr) {
-              if (typeof m === "string") {
-                const i = m.indexOf("/");
-                if (i > 0) norm.push({ providerID: m.slice(0, i), id: m.slice(i + 1) });
-              } else if (m != null && typeof m === "object") {
-                const providerID = m.providerID ?? m.provider ?? null;
-                const id = m.id ?? m.modelID ?? m.model ?? null;
-                if (typeof providerID === "string" && typeof id === "string")
-                  norm.push({ providerID, id });
-              }
-            }
-            if (norm.length > 0) cachedModels = dedupChain(norm).map((e) => ({ providerID: e.providerID, id: e.id }));
-          }
-        } else if (Array.isArray(cand) && cand.length > 0) {
-          const norm = [];
-          for (const m of cand) {
-            if (m != null && typeof m === "object") {
-              const providerID = m.providerID ?? m.provider ?? null;
-              const id = m.id ?? m.modelID ?? m.model ?? null;
-              if (typeof providerID === "string" && typeof id === "string")
-                norm.push({ providerID, id });
-            }
-          }
-          if (norm.length > 0) cachedModels = dedupChain(norm).map((e) => ({ providerID: e.providerID, id: e.id }));
+    if (typeof ctx?.catalog?.transform === "function") {
+      const found = [];
+      await ctx.catalog.transform((draft) => {
+        const recs = draft.provider.list(); // readonly CatalogProviderRecord[]: { provider: {id,...}, models: ReadonlyMap<id, info> }
+        for (const rec of recs ?? []) {
+          const pid = rec?.provider?.id;
+          if (typeof pid !== "string") continue;
+          let entries = [];
+          try { entries = rec.models instanceof Map ? [...rec.models.keys()] : Object.keys(rec.models ?? {}); } catch { continue; }
+          for (const mid of entries) if (typeof mid === "string" && mid.length > 0) found.push({ providerID: pid, id: mid });
         }
-      } catch {
-        // bu aday basarisiz — sonrakini dene
-      }
+      });
+      if (found.length > 0) cachedModels = dedupChain(found).map((e) => ({ providerID: e.providerID, id: e.id }));
     }
-  } catch {
-    // probe asla setup'u devirmez
-  }
+  } catch { /* probe asla setup'u devirmez */ }
   try {
-    console.log(`[model-router] catalog probe: ${cachedModels != null ? `${cachedModels.length} model` : "yok (agent derleyecek)"}`);
+    const nProv = cachedModels != null ? new Set(cachedModels.map((m) => m.providerID)).size : 0;
+    console.log(`[model-router] catalog probe: ${cachedModels != null ? `${cachedModels.length} model / ${nProv} provider` : "katalog okunamadi"}`);
   } catch {
     // log asla setup'u devirmez
   }
@@ -219,7 +181,7 @@ async function setup(ctx) {
     const modelBlock =
       cachedModels != null
         ? `Model secenekleri (kesfedilen katalogdan, provider/id formatinda):\n${cachedModels.map((m) => `  - ${m.providerID}/${m.id}`).join("\n")}`
-        : "Kesfedilmis model katalogu yok. Model seceneklerini `opencode models` ciktisindan ve aktif config'den derle; SADECE aktif (auth'lu) saglayici ve modelleri secenek yap. Ayni model farkli saglayicida AYRI secenektir (provider/id ciftiyle listele).";
+        : "Kesfedilmis model katalogu yok. Model listesini ASLA uydurma/tahmin etme. `question` ile SADECE ajan sorusunu sor, model sorularinda secenek sunma; once `opencode models` komutunun GERCEK ciktisini alip o ciktiyi kullaniciya gosterip onay iste. Onaylanan ciktidaki SADECE aktif (auth'lu) saglayici ve modelleri secenek yap. Ayni model farkli saglayicida AYRI secenektir (provider/id ciftiyle listele).";
     const applyBlock = hasOhMy
       ? "Secilen primary'yi HEMEN uygula: oh-my-oh-my slim config dosyasi (`oh-my-opencode-slim.json`) icinde `agents.<ajan>.model` alanina yaz. Boyle bir alan/blok yoksa host config'e dokunma, sadece state dosyasina yaz."
       : "Secilen primary'yi HEMEN uygula: host config dosyasi (`opencode.jsonc`) icinde `agent.<ajan>.model` alanina \"provider/id\" degeri yaz.";
