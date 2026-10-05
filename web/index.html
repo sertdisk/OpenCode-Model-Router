@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenCode Model Router</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">
+      <svg width="26" height="26" viewBox="0 0 26 26" fill="none">
+        <rect x="1" y="1" width="24" height="24" rx="6" stroke="#4cc38a" stroke-width="1.5"/>
+        <circle cx="8" cy="13" r="2.2" fill="#4cc38a"/>
+        <circle cx="18" cy="7.5" r="2.2" fill="#e6e8e9"/>
+        <circle cx="18" cy="18.5" r="2.2" fill="#5b6366"/>
+        <path d="M10.2 13 15.8 8.4M10.2 13l5.6 4.6" stroke="#4cc38a" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </span>
+    <div class="brand-text">
+      <h1>OpenCode Model Router</h1>
+      <p>ajan &rarr; model zinciri y&ouml;netimi</p>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span id="connStatus" class="conn conn--loading" role="status">
+      <span class="conn-dot" aria-hidden="true"></span><span id="connText">ba&#287;lan&#305;yor&hellip;</span>
+    </span>
+    <span id="serverVersion" class="ver" title="Sunucu s&uuml;r&uuml;m&uuml;">v&ndash;</span>
+  </div>
+</header>
+
+<div id="banner" class="banner" hidden>
+  <span class="banner-dot" aria-hidden="true"></span>
+  <p><strong>Sunucuya ula&#351;&#305;lam&#305;yor</strong> &mdash; opencode &ccedil;al&#305;&#351;&#305;yor mu? (127.0.0.1:37337)</p>
+  <button id="retryBtn" type="button" class="btn btn--small">Tekrar dene</button>
+</div>
+
+<main class="layout">
+
+  <!-- SOL: ajan listesi -->
+  <aside class="panel agents" aria-label="Ajanlar">
+    <div class="panel-head">
+      <h2>Ajanlar</h2>
+      <span id="agentCount" class="count">12</span>
+    </div>
+    <ul id="agentList" class="agent-list">
+      <li class="skel-row" aria-hidden="true"><span class="skel skel--a"></span><span class="skel skel--b"></span></li>
+      <li class="skel-row" aria-hidden="true"><span class="skel skel--a"></span><span class="skel skel--b"></span></li>
+      <li class="skel-row" aria-hidden="true"><span class="skel skel--a"></span><span class="skel skel--b"></span></li>
+      <li class="skel-row" aria-hidden="true"><span class="skel skel--a"></span><span class="skel skel--b"></span></li>
+      <li class="skel-row" aria-hidden="true"><span class="skel skel--a"></span><span class="skel skel--b"></span></li>
+      <li class="skel-row" aria-hidden="true"><span class="skel skel--a"></span><span class="skel skel--b"></span></li>
+    </ul>
+  </aside>
+
+  <!-- ORTA: zincir editörü -->
+  <section class="panel chain" aria-label="Model zinciri">
+    <div id="chainBody" class="chain-body">
+      <div class="chain-loading" aria-hidden="true">
+        <div class="skel skel--title"></div>
+        <div class="skel skel--line"></div>
+        <div class="skel skel--slot"></div>
+        <div class="skel skel--slot"></div>
+        <div class="skel skel--slot"></div>
+      </div>
+    </div>
+    <div class="actionbar">
+      <p id="dirtyHint" class="dirty-hint" role="status"></p>
+      <div class="actionbar-btns">
+        <button id="saveBtn" type="button" class="btn btn--primary" disabled>Kaydet</button>
+        <button id="applyBtn" type="button" class="btn">Uygula</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- SAĞ: model seçici drawer -->
+<div id="drawerOverlay" class="overlay" hidden></div>
+<aside id="drawer" class="drawer" role="dialog" aria-modal="true" aria-label="Model seç" hidden>
+  <div class="drawer-head">
+    <div class="drawer-title">
+      <h2 id="drawerTitle">Model se&ccedil;</h2>
+      <p id="drawerSub" class="drawer-sub"></p>
+    </div>
+    <button id="drawerClose" type="button" class="icon-btn" aria-label="Kapat (Esc)">&times;</button>
+  </div>
+  <div class="drawer-search">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+      <circle cx="6" cy="6" r="4.2" stroke="#9aa3a6" stroke-width="1.5"/>
+      <path d="m9.3 9.3 3 3" stroke="#9aa3a6" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    <input id="modelSearch" type="search" placeholder="Model ara &mdash; &ouml;rn. deepseek, flash, :free"
+      autocomplete="off" spellcheck="false"
+      aria-label="Model ara" aria-controls="modelList" aria-expanded="true">
+  </div>
+  <div id="modelList" class="model-list" role="listbox" aria-label="Modeller" tabindex="-1"></div>
+  <p id="modelEmpty" class="model-empty" hidden>Sonu&ccedil; yok &mdash; aramay&#305; de&#287;i&#351;tirmeyi dene.</p>
+  <p class="drawer-foot">&uarr;&darr; gezin &middot; Enter se&ccedil; &middot; Esc kapat</p>
+</aside>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+
+<footer class="infobar">
+  <span id="infoStats">katalog &middot;&middot;&middot;</span>
+  <span id="infoState" class="infobar-state" title=""></span>
+</footer>
+
+<script src="/app.js" defer></script>
+</body>
+</html>
