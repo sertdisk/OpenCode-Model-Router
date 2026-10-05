@@ -1,0 +1,10 @@
+# GitHub satir sonu normalizasyonu: repoda LF, Windows betiklerinde CRLF.
+* text=auto
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.svg text
+*.js text
+*.mjs text
+*.json text
+*.md text
