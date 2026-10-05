@@ -57,7 +57,7 @@ const AJANLAR = [
 ];
 const MEVCUT = {
   orchestrator: "mock-a/old-model",
-  explorer: "mock-b/scout",
+  explorer: { providerID: "mock-b", id: "scout", variant: "high" },
   librarian: "mock-a/m1",
   oracle: "mock-b/think",
   designer: "mock-a/draw",
@@ -167,6 +167,7 @@ try {
     chains: {
       orchestrator: { primary: "mock-a/team/model-x", secondary: "mock-b/think", tertiary: null },
       librarian: { primary: "mock-a/m1", secondary: null, tertiary: null },
+      explorer: { primary: "mock-b/scout", secondary: null, tertiary: null },
     },
   };
   const sv = await (
@@ -180,6 +181,11 @@ try {
   const st2 = await (await fetch(`${taban}/api/state`)).json();
   const ork = (st2.agents || []).find((a) => a.id === "orchestrator");
   console.log(`[test] state zincir dogrulama (orchestrator): ${kisa(ork?.chain, 160)}`);
+  const exp = (st2.agents || []).find((a) => a.id === "explorer");
+  console.log(`[test] explorer current (varyantli display): ${exp?.current}`);
+  const stateHam = JSON.parse(readFileSync(stateYolu, "utf8"));
+  const expVar = stateHam.chains?.explorer?.primary?.variant;
+  console.log(`[test] explorer variant korumasi (state): ${expVar === "high" ? "TAMAM" : "HATA-" + kisa(expVar, 40)}`);
 
   // 5) apply (yapisal host yolu)
   const ap = await (await fetch(`${taban}/api/apply`, { method: "POST" })).json();
@@ -188,6 +194,13 @@ try {
   const hostSon = JSON.parse(readFileSync(hostYolu, "utf8"));
   console.log(`[test] ohmy agents.orchestrator.model: ${kisa(ohmySon.agents?.orchestrator?.model, 200)}`);
   console.log(`[test] ohmy agents.librarian.model (string stil korunmali): ${kisa(ohmySon.agents?.librarian?.model, 200)}`);
+  console.log(`[test] ohmy agents.explorer.model (obje+varyantli): ${kisa(ohmySon.agents?.explorer?.model, 200)}`);
+  const expModel = ohmySon.agents?.explorer?.model;
+  const expOk = Array.isArray(expModel) && expModel.length === 1 && expModel[0]?.id === "mock-b/scout" && expModel[0]?.variant === "high";
+  console.log(`[test] explorer oh-my varyant korumasi: ${expOk ? "TAMAM" : "HATA"}`);
+  const orkModel = ohmySon.agents?.orchestrator?.model;
+  const orkOk = Array.isArray(orkModel) && orkModel.length === 2 && typeof orkModel[0] === "object" && orkModel[0]?.variant === undefined;
+  console.log(`[test] orchestrator oh-my obje formu (varyantsiz): ${orkOk ? "TAMAM" : "HATA-" + kisa(orkModel, 120)}`);
   console.log(`[test] ohmy preset korundu mu: ${typeof ohmySon.presets?.dev?.orchestrator?.model === "string" ? "evet" : "HAYIR"}`);
   console.log(`[test] host orchestrator.model: ${hostSon.agent?.orchestrator?.model} plan.model: ${hostSon.agent?.plan?.model} librarian eklendi mi: ${"librarian" in (hostSon.agent || {}) ? "HAYIR-EKLENMIS" : "hayir"}`);
 

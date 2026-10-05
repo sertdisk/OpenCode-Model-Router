@@ -405,6 +405,41 @@ async function setup(ctx) {
     return snap;
   };
 
+  // Mevcut atamalarin YAPILI okumasi: { <ajan>: { providerID, id, variant? } | null }.
+  // string degerde ilk "/" uzerinden bolunur (variant yok sayilir).
+  const readAssignmentRefs = async (names) => {
+    const snap = {};
+    try {
+      if (typeof ctx.agent?.transform === "function") {
+        await ctx.agent.transform(async (draft) => {
+          for (const n of names) {
+            try {
+              const rec = typeof draft.get === "function" ? await draft.get(n) : draft?.[n];
+              const m = rec?.model ?? rec?.modelID ?? null;
+              if (m != null && typeof m === "object" && typeof m.providerID === "string" && typeof m.id === "string") {
+                const r = { providerID: m.providerID, id: m.id };
+                if (typeof m.variant === "string" && m.variant.length > 0) r.variant = m.variant;
+                snap[n] = r;
+              } else if (typeof m === "string" && m.includes("/")) {
+                const i = m.indexOf("/");
+                if (i > 0 && i < m.length - 1) snap[n] = { providerID: m.slice(0, i), id: m.slice(i + 1) };
+                else snap[n] = null;
+              } else {
+                snap[n] = null;
+              }
+            } catch {
+              snap[n] = null;
+            }
+          }
+        });
+      }
+    } catch {
+      // salt-okunur: hata yutulur
+    }
+    for (const n of names) if (!(n in snap)) snap[n] = null;
+    return snap;
+  };
+
   // Secondary/tertiary her zaman sadece state dosyasinda durur
   // (retry steering sonraki fazda bu dosyayi okuyacak).
   const buildInstruction = (names, assign, hasOhMy, signals, secenekler) => {
@@ -568,7 +603,7 @@ async function setup(ctx) {
       } catch {}
       return 37337;
     })();
-    const SERVER_VERSION = "0.3.0";
+    const SERVER_VERSION = "0.3.1";
     // State yolu: sabit varsayilan; test override: MODEL_ROUTER_STATE_PATH.
     // (LOG_PATH'tan ONCE tanimli olmali — TDZ.)
     const stateYolu = (() => {
@@ -948,6 +983,10 @@ async function setup(ctx) {
           try {
             atama = await readAssignments(agentIdler);
           } catch {}
+          let refs = {};
+          try {
+            refs = await readAssignmentRefs(agentIdler);
+          } catch {}
           let st = { chains: {} };
           try {
             st = await stateOku();
@@ -968,7 +1007,13 @@ async function setup(ctx) {
             } catch {}
             let primary = null;
             try {
-              primary = refStr(ch?.primary) ?? cur;
+              let varyantsiz = null;
+              try {
+                const r = refs[id];
+                if (r != null && typeof r === "object" && typeof r.providerID === "string" && typeof r.id === "string")
+                  varyantsiz = `${r.providerID}/${r.id}`;
+              } catch {}
+              primary = refStr(ch?.primary) ?? varyantsiz ?? cur;
             } catch {}
             return {
               id,
@@ -1015,6 +1060,10 @@ async function setup(ctx) {
               ? gov.chains
               : null;
           if (gelen == null) return hataYanit(400, "govde.chains yok");
+          let refs = {};
+          try {
+            refs = await readAssignmentRefs(Object.keys(gelen));
+          } catch {}
           let mevcut = null;
           try {
             const ham = await dosyaOku(stateYolu);
@@ -1039,17 +1088,28 @@ async function setup(ctx) {
                   yeni[slot] = null;
                   continue;
                 }
-                if (typeof v !== "string" || !v.includes("/")) return hataYanit(400, `gecersiz ref: ${ajan}.${slot}`);
-                const ref = strRef(v);
+                if (typeof v !== "string" && !(v != null && typeof v === "object" && typeof v.providerID === "string" && typeof v.id === "string")) return hataYanit(400, `gecersiz ref: ${ajan}.${slot}`);
+                const ref = typeof v === "string" ? strRef(v) : { providerID: v.providerID, id: v.id };
                 if (ref == null) return hataYanit(400, `gecersiz ref: ${ajan}.${slot}`);
-                // Variant: model ayniyse korunur, degistiysa variantsiz yazilir.
+                // Variant koruma sirasi: (a) onceki state ayni model+variant'liysa; (b) yoksa
+                // mevcut atama ayni model+variant'liysa; (c) yoksa variantsiz yazilir.
                 const eski = onceki[slot];
+                let canli = null;
+                try {
+                  const r = refs[ajan];
+                  if (r != null && typeof r === "object") canli = r;
+                } catch {}
                 if (
                   eski != null && typeof eski === "object" &&
                   eski.providerID === ref.providerID && eski.id === ref.id &&
                   typeof eski.variant === "string" && eski.variant.length > 0
                 ) {
                   yeni[slot] = { providerID: ref.providerID, id: ref.id, variant: eski.variant };
+                } else if (
+                  canli != null && canli.providerID === ref.providerID && canli.id === ref.id &&
+                  typeof canli.variant === "string" && canli.variant.length > 0
+                ) {
+                  yeni[slot] = { providerID: ref.providerID, id: ref.id, variant: canli.variant };
                 } else {
                   yeni[slot] = ref;
                 }
@@ -1125,9 +1185,10 @@ async function setup(ctx) {
                       );
                       if (girdiler.length === 0) continue;
                       const stil = ohmyStilBul(cfg, ajan);
+                      const varyantVar = girdiler.some((e) => typeof e.variant === "string" && e.variant.length > 0);
                       const dizi = girdiler.map((e) => {
                         const ref = `${e.providerID}/${e.id}`;
-                        if (stil === "string") return ref;
+                        if (stil === "string" && !varyantVar) return ref;
                         if (typeof e.variant === "string" && e.variant.length > 0) return { id: ref, variant: e.variant };
                         return { id: ref };
                       });
