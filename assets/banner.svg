@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="420" viewBox="0 0 1600 420" font-family="Segoe UI, ui-sans-serif, system-ui, -apple-system, sans-serif">
+  <title>OpenCode Model Router</title>
+  <desc>Per-agent primary to secondary to tertiary model routing for OpenCode.</desc>
+  <defs>
+    <pattern id="grid-dots" width="26" height="26" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.1" fill="#1f2426"/>
+    </pattern>
+    <marker id="arrow-muted" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="10" markerHeight="10" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#9aa3a6"/>
+    </marker>
+  </defs>
+
+  <!-- ground -->
+  <rect x="0" y="0" width="1600" height="420" fill="#0b0d0e"/>
+  <rect x="0" y="0" width="1600" height="420" fill="url(#grid-dots)" opacity="0.55"/>
+
+  <!-- split -->
+  <line x1="980" y1="104" x2="980" y2="316" stroke="#1f2426" stroke-width="1"/>
+
+  <!-- brand mark: entry node branching into routed directions -->
+  <rect x="72" y="132" width="112" height="112" rx="16" fill="#121516" stroke="#1f2426" stroke-width="1.5"/>
+  <circle cx="103" cy="188" r="9" fill="#4cc38a"/>
+  <path d="M112 188 H132" fill="none" stroke="#4cc38a" stroke-width="3" stroke-linecap="round"/>
+  <path d="M132 188 C 143 188 143 166 153 166" fill="none" stroke="#4cc38a" stroke-width="3" stroke-linecap="round"/>
+  <path d="M132 188 C 143 188 143 210 153 210" fill="none" stroke="#4cc38a" stroke-width="3" stroke-linecap="round"/>
+  <path d="M151 158.5 L167 166 L151 173.5 Z" fill="#4cc38a"/>
+  <path d="M151 202.5 L167 210 L151 217.5 Z" fill="#4cc38a"/>
+
+  <!-- brand text -->
+  <text x="216" y="176" font-size="58" font-weight="700" fill="#e6e8e9">OpenCode Model Router</text>
+  <rect x="216" y="200" width="52" height="3" rx="1.5" fill="#4cc38a"/>
+  <text x="216" y="242" font-size="21" fill="#9aa3a6">Per-agent primary &#8594; secondary &#8594; tertiary model routing for OpenCode</text>
+
+  <!-- routing chain motif -->
+  <text x="1016" y="138" font-size="12" font-weight="600" letter-spacing="2.5" fill="#9aa3a6">PER-AGENT CHAIN</text>
+
+  <rect x="1016" y="156" width="144" height="64" rx="10" fill="#121516" stroke="#4cc38a" stroke-width="1.5"/>
+  <text x="1088" y="194" text-anchor="middle" font-size="16" font-weight="600" fill="#e6e8e9">1 Primary</text>
+
+  <line x1="1164" y1="188" x2="1196" y2="188" stroke="#9aa3a6" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+  <text x="1181" y="174" text-anchor="middle" font-size="12" fill="#9aa3a6">fails</text>
+
+  <rect x="1200" y="156" width="144" height="64" rx="10" fill="#121516" stroke="#1f2426" stroke-width="1.5"/>
+  <text x="1272" y="194" text-anchor="middle" font-size="16" font-weight="600" fill="#9aa3a6">2 Secondary</text>
+
+  <line x1="1348" y1="188" x2="1380" y2="188" stroke="#9aa3a6" stroke-width="1.5" marker-end="url(#arrow-muted)"/>
+  <text x="1365" y="174" text-anchor="middle" font-size="12" fill="#9aa3a6">fails</text>
+
+  <rect x="1384" y="156" width="144" height="64" rx="10" fill="#121516" stroke="#1f2426" stroke-width="1.5"/>
+  <text x="1456" y="194" text-anchor="middle" font-size="16" font-weight="600" fill="#9aa3a6">3 Tertiary</text>
+</svg>

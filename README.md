@@ -8,8 +8,11 @@
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6.svg)
 ![Zero dependencies](https://img.shields.io/badge/dependencies-0-4cc38a.svg)
 ![OpenCode plugin](https://img.shields.io/badge/OpenCode-plugin-6e7681.svg)
+![Works with OMO-Slim](https://img.shields.io/badge/works%20with-oh--my--opencode--slim-4cc38a.svg)
 
 **Give every OpenCode agent a primary, secondary, and tertiary model — and a local web UI to manage them.**
+
+**First-class support for [oh-my-opencode-slim](https://github.com/alvinunreal/oh-my-opencode-slim) (OMO-Slim):** chains are written as native `agents.<agent>.model` arrays, and OMO-Slim's own failover engine picks them up.
 
 Stop editing config files by hand. Pick the models your setup actually has, chain them for failover,
 and apply everything with one click.

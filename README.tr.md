@@ -8,8 +8,11 @@
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6.svg)
 ![Sıfır bağımlılık](https://img.shields.io/badge/bağımlılık-0-4cc38a.svg)
 ![OpenCode eklentisi](https://img.shields.io/badge/OpenCode-eklenti-6e7681.svg)
+![OMO-Slim uyumlu](https://img.shields.io/badge/uyumlu-oh--my--opencode--slim-4cc38a.svg)
 
 **Her OpenCode ajanına birincil, ikincil ve üçüncül model tanımlayın — yönetmek için de yerel bir web arayüzü.**
+
+**[oh-my-opencode-slim](https://github.com/alvinunreal/oh-my-opencode-slim) (OMO-Slim) için birinci sınıf destek:** zincirler yerel `agents.<ajan>.model` dizileri olarak yazılır ve OMO-Slim'in kendi yedekleme motoru onları devralır.
 
 Config dosyalarını elle düzenlemeyi bırakın. Kurulumunuzda gerçekten bulunan modelleri seçin,
 yanıt vermeyene karşı zincirleyin ve tek tıkla uygulayın.
