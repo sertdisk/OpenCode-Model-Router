@@ -1,13 +1,26 @@
 {
   "name": "opencode-model-router",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "type": "module",
-  "description": "OpenCode Model Router — per-agent primary/secondary/tertiary model routing with provider-qualified fallback",
+  "description": "Per-agent primary/secondary/tertiary model routing for OpenCode — model fallback chains with a local web UI. Works with oh-my-opencode-slim; zero dependencies.",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "ai-agents",
+    "model-router",
+    "model-fallback",
+    "llm",
+    "primary-secondary-tertiary",
+    "oh-my-opencode-slim",
+    "developer-tools"
+  ],
+  "license": "MIT",
   "peerDependencies": {
     "@opencode-ai/plugin": "*"
   },
   "scripts": {
     "check": "node --check src/model-router.js",
-    "install-dev": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/install-dev.ps1"
+    "install-dev": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/install-dev.ps1",
+    "dev-server": "bun tools/dev-server.mjs"
   }
 }
