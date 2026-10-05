@@ -98,17 +98,55 @@ async function setup(ctx) {
     });
   };
 
-  // Karar 3 — hasOhMy probe (tespit; yazma karari execute fazinda agent tarafindan uygulanir).
-  const probeOhMy = () => {
+  // Karar 3 — hasOhMy tespiti: DOSYA VARLIGINDAN (runtime'da ctx.catalog/ctx.config YOK).
+  // Env override (test edilebilirlik): MODEL_ROUTER_OHMY_PATH.
+  // Prod sirasi: ~/.config/opencode/oh-my-opencode-slim.json, sonra .jsonc.
+  // Tum dosya erisimleri dinamik import + guard'li; tespit asla setup'u devirmez.
+  const evDizini = () => {
+    try {
+      return process.env.USERPROFILE || process.env.HOME || "";
+    } catch {
+      return "";
+    }
+  };
+  const ohmyAdaylar = () => {
+    const out = [];
+    try {
+      const p = process.env.MODEL_ROUTER_OHMY_PATH;
+      if (typeof p === "string" && p.length > 0) out.push(p);
+    } catch {}
+    try {
+      const b = evDizini();
+      if (b) {
+        out.push(`${b}/.config/opencode/oh-my-opencode-slim.json`);
+        out.push(`${b}/.config/opencode/oh-my-opencode-slim.jsonc`);
+      }
+    } catch {}
+    return out;
+  };
+  const ohmyCozumle = async () => {
+    const adaylar = ohmyAdaylar();
+    try {
+      const fs = await import("node:fs/promises");
+      for (const p of adaylar) {
+        try {
+          await fs.access(p);
+          return { path: p, exists: true };
+        } catch {}
+      }
+    } catch {}
+    return { path: adaylar[0] || "", exists: false };
+  };
+  const probeOhMy = async () => {
     const signals = [];
     try {
       if (ctx?.ohMy != null || ctx?.["oh-my"] != null) signals.push("ctx oh-my key");
-      const cfg = ctx?.config;
-      if (cfg != null && typeof cfg === "object" && cfg.agents != null && typeof cfg.agents === "object")
-        signals.push("config.agents");
-      const pc = ctx?.project?.config ?? ctx?.projectConfig;
-      if (pc != null && typeof pc === "object" && pc.agents != null && typeof pc.agents === "object")
-        signals.push("project config.agents");
+    } catch {
+      // probe asla setup'u devirmez
+    }
+    try {
+      const o = await ohmyCozumle();
+      if (o.exists) signals.push("oh-my file");
     } catch {
       // probe asla setup'u devirmez
     }
@@ -410,7 +448,7 @@ async function setup(ctx) {
   // Boot log: kesif + mod tespiti (yerel dizin loader dogrulamasina da sinyal verir).
   try {
     const bootAgents = sortAgents(await listAgents());
-    const bootMode = probeOhMy();
+    const bootMode = await probeOhMy();
     console.log(
       `[model-router] agents=${bootAgents.length} mode=${bootMode.hasOhMy ? "oh-my" : "host"}` +
         (bootMode.signals.length ? ` (${bootMode.signals.join(", ")})` : "")
@@ -429,7 +467,7 @@ async function setup(ctx) {
             description: "Ajan icin primary/secondary/tertiary zincir secimi (question akisi)",
             execute: async (invocation) => {
               const names = sortAgents(await listAgents());
-              const { hasOhMy, signals } = probeOhMy();
+              const { hasOhMy, signals } = await probeOhMy();
               const assign = await readAssignments(names);
               // Korumali saglayicilar: mevcut atamalar + state zincirleri (baglanti filtresinden muaf).
               const korumali = new Set();
@@ -523,8 +561,34 @@ async function setup(ctx) {
   // hangi veri kaynagi calisiyor. Mevcut akislara dokunmaz; hata verirse sessizce
   // gecilir, dispose sunucuyu kapatir. Tum import'lar dinamik ve guard'li.
   try {
-    const PROBE_PORT = 37337;
-    const LOG_PATH = STATE_PATH.replace(/model-router\.json$/, "model-router-server.log");
+    const WEB_PORT = (() => {
+      try {
+        const p = parseInt(process.env.MODEL_ROUTER_PORT || "", 10);
+        if (Number.isFinite(p) && p > 0 && p < 65536) return p;
+      } catch {}
+      return 37337;
+    })();
+    const SERVER_VERSION = "0.3.0";
+    // State yolu: sabit varsayilan; test override: MODEL_ROUTER_STATE_PATH.
+    // (LOG_PATH'tan ONCE tanimli olmali — TDZ.)
+    const stateYolu = (() => {
+      try {
+        const p = process.env.MODEL_ROUTER_STATE_PATH;
+        if (typeof p === "string" && p.length > 0) return p;
+      } catch {}
+      return STATE_PATH;
+    })();
+    // Log dosyasi: state dosyasinin kardesi (prod: model-router-server.log).
+    // Override yolu farkli biterse ASLA state dosyasinin kendisi olmaz (+ ".server.log").
+    const LOG_PATH = (() => {
+      try {
+        if (/model-router\.json$/.test(stateYolu))
+          return stateYolu.replace(/model-router\.json$/, "model-router-server.log");
+        return `${stateYolu}.server.log`;
+      } catch {
+        return "";
+      }
+    })();
     const logSatir = async (satir) => {
       try {
         const fs = await import("node:fs/promises");
@@ -638,15 +702,200 @@ async function setup(ctx) {
         return { source: "drafts.sqlite", hidden: 0, present: false, error: hataTemizle(err) };
       }
     };
-    // Ortak istek karsilama: {status, contentType, body} doner; adapter'lar (Bun/node:http) cevirir.
-    const istekKarsila = async (method, pathname) => {
+    // Web UI yardimcilari (hepsi guard'li; sunucu asla setup'u devirmez).
+    // stateYolu blok basinda tanimli (TDZ onlemi); burada tekrar tanimlanmaz.
+    // Host config yolu: test override MODEL_ROUTER_HOST_CONFIG, prod ~/.config/opencode/opencode.jsonc.
+    const hostYoluCozumle = () => {
       try {
-        if (method === "GET" && pathname === "/") {
+        const p = process.env.MODEL_ROUTER_HOST_CONFIG;
+        if (typeof p === "string" && p.length > 0) return p;
+      } catch {}
+      try {
+        const b = evDizini();
+        if (b) return `${b}/.config/opencode/opencode.jsonc`;
+      } catch {}
+      return "";
+    };
+    const jsonYanit = (o, status) => ({
+      status: status || 200,
+      contentType: "application/json",
+      body: JSON.stringify(o),
+    });
+    const hataYanit = (status, msg) => jsonYanit({ ok: false, error: msg }, status);
+    // State okuma: { chains } (bozuk/eksik dosya -> bos zincir, hata firlatmaz).
+    const stateOku = async () => {
+      try {
+        const ham = await dosyaOku(stateYolu);
+        if (ham == null) return { chains: {} };
+        const j = JSON.parse(ham);
+        const ch = j != null && typeof j === "object" && j.chains != null && typeof j.chains === "object" ? j.chains : {};
+        return { chains: ch };
+      } catch {
+        return { chains: {} };
+      }
+    };
+    // Zincir girdisi -> "provider/id" (gecersiz -> null).
+    const refStr = (e) =>
+      e != null && typeof e === "object" && typeof e.providerID === "string" && typeof e.id === "string" &&
+      e.providerID.length > 0 && e.id.length > 0
+        ? `${e.providerID}/${e.id}`
+        : null;
+    // "provider/id" -> { providerID, id }; ILK "/" uzerinden bol (id'de slash olabilir).
+    const strRef = (s) => {
+      try {
+        if (typeof s !== "string") return null;
+        const i = s.indexOf("/");
+        if (i <= 0 || i >= s.length - 1) return null;
+        return { providerID: s.slice(0, i), id: s.slice(i + 1) };
+      } catch {
+        return null;
+      }
+    };
+    // Gorunurluk anahtari (gizliKume uretimiyle ayni normalizasyon: kucuk harf + bas `~` temizligi).
+    const gizliAnahtar = (pid, mid) => {
+      try {
+        return `${String(pid ?? "").toLowerCase()}/${String(mid ?? "").replace(/^~/, "").toLowerCase()}`;
+      } catch {
+        return "/";
+      }
+    };
+    // Katalog (ctx.model?.list) + gorunurluk filtresi: katalog - gizli = gorunur.
+    const katalogGorunur = async () => {
+      let sonuc = null;
+      try {
+        sonuc = await modelleriGetir();
+      } catch (err) {
+        sonuc = { source: "none", models: [], error: hataTemizle(err) };
+      }
+      const tum = Array.isArray(sonuc?.models) ? sonuc.models : [];
+      const gorunur = [];
+      let gizliSay = 0;
+      for (const m of tum) {
+        try {
+          if (gizliKume != null && gizliKume.has(gizliAnahtar(m?.providerID, m?.id))) {
+            gizliSay++;
+            continue;
+          }
+          gorunur.push(m);
+        } catch {
+          try {
+            gorunur.push(m);
+          } catch {}
+        }
+      }
+      const sira = (a, b) =>
+        String(a?.providerID ?? "").localeCompare(String(b?.providerID ?? "")) ||
+        String(a?.id ?? "").localeCompare(String(b?.id ?? ""));
+      let tumSirali = [];
+      try {
+        tumSirali = [...tum].sort(sira);
+      } catch {
+        tumSirali = tum;
+      }
+      let gorSirali = [];
+      try {
+        gorSirali = [...gorunur].sort(sira);
+      } catch {
+        gorSirali = gorunur;
+      }
+      return { source: sonuc?.source ?? "none", tum: tumSirali, gorunur: gorSirali, gizliSay, error: sonuc?.error ?? null };
+    };
+    // Statik web dizini: MODEL_ROUTER_WEB_DIR -> ~/.config/opencode/model-router-web/
+    // -> modul dizininden ../../web (spec) -> ../web (repo duzeni yedegi). index.html varligi aranir.
+    const webDiziniBul = async () => {
+      const adaylar = [];
+      try {
+        const p = process.env.MODEL_ROUTER_WEB_DIR;
+        if (typeof p === "string" && p.length > 0) adaylar.push(p);
+      } catch {}
+      try {
+        const b = evDizini();
+        if (b) adaylar.push(`${b}/.config/opencode/model-router-web`);
+      } catch {}
+      try {
+        const mod = await import("node:url");
+        const path = await import("node:path");
+        const bura = path.dirname(mod.fileURLToPath(import.meta.url));
+        adaylar.push(path.join(bura, "..", "..", "web"));
+        adaylar.push(path.join(bura, "..", "web"));
+      } catch {}
+      try {
+        const path = await import("node:path");
+        const fs = await import("node:fs/promises");
+        for (const d of adaylar) {
+          try {
+            await fs.access(path.join(d, "index.html"));
+            return d;
+          } catch {}
+        }
+      } catch {}
+      return adaylar[0] || "";
+    };
+    const icerikTipi = (ad) => {
+      try {
+        if (ad.endsWith(".html")) return "text/html; charset=utf-8";
+        if (ad.endsWith(".js")) return "text/javascript; charset=utf-8";
+        if (ad.endsWith(".css")) return "text/css; charset=utf-8";
+      } catch {}
+      return "application/octet-stream";
+    };
+    const statikSun = async (yol) => {
+      try {
+        if (yol === "/favicon.ico") return { status: 204, contentType: "text/plain", body: "" };
+        const izinli = { "/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/style.css": "style.css" };
+        const ad = izinli[yol];
+        if (!ad) return { status: 404, contentType: "application/json", body: JSON.stringify({ error: "not found" }) };
+        const dizin = await webDiziniBul();
+        let icerik = null;
+        if (dizin) {
+          try {
+            const path = await import("node:path");
+            const fs = await import("node:fs/promises");
+            icerik = await fs.readFile(path.join(dizin, ad), "utf8");
+          } catch {}
+        }
+        if (icerik == null) {
           return {
-            status: 200,
+            status: 404,
             contentType: "text/html; charset=utf-8",
-            body: `<h1>OpenCode Model Router</h1><p>Sunucu calisiyor.</p><p><a href="/api/probe">/api/probe</a></p>`,
+            body: `<h1>Model Router UI bulunamadi</h1><p>Web dosyalari henuz kurulu degil. Beklenen konum: <code>${dizin || "(bilinmiyor)"}</code></p>`,
           };
+        }
+        return { status: 200, contentType: icerikTipi(ad), body: icerik };
+      } catch (err) {
+        return { status: 500, contentType: "application/json", body: JSON.stringify({ error: hataTemizle(err) }) };
+      }
+    };
+    // oh-my model eleman formati: mevcut kullanim birebir (dizi elemani string mi {id} objesi mi?).
+    // Sira: top-level agents girdisi -> aktif preset girdisi -> diger presetler -> varsayilan "object".
+    const ohmyStilBul = (cfg, ajan) => {
+      try {
+        const m1 = cfg?.agents?.[ajan]?.model;
+        if (Array.isArray(m1) && m1.length > 0) return typeof m1[0] === "string" ? "string" : "object";
+      } catch {}
+      try {
+        const presetler = cfg?.presets;
+        const aktif = typeof cfg?.preset === "string" ? cfg.preset : null;
+        if (aktif && presetler && typeof presetler === "object") {
+          const m = presetler[aktif]?.[ajan]?.model;
+          if (Array.isArray(m) && m.length > 0) return typeof m[0] === "string" ? "string" : "object";
+        }
+        if (presetler && typeof presetler === "object") {
+          for (const k of Object.keys(presetler)) {
+            try {
+              const m = presetler[k]?.[ajan]?.model;
+              if (Array.isArray(m) && m.length > 0) return typeof m[0] === "string" ? "string" : "object";
+            } catch {}
+          }
+        }
+      } catch {}
+      return "object";
+    };
+    // Ortak istek karsilama: {status, contentType, body} doner; adapter'lar (Bun/node:http) cevirir.
+    const istekKarsila = async (method, pathname, query, govdeMetni) => {
+      try {
+        if (method === "GET" && (pathname === "/" || pathname === "/index.html" || pathname === "/app.js" || pathname === "/style.css" || pathname === "/favicon.ico")) {
+          return await statikSun(pathname);
         }
         if (method === "GET" && pathname === "/api/probe") {
           let agentIdler = [];
@@ -674,10 +923,373 @@ async function setup(ctx) {
           return { status: 200, contentType: "application/json", body: JSON.stringify(govde) };
         }
         if (method === "GET" && pathname === "/api/models") {
-          let modSonuc = null;
-          try { modSonuc = await modelleriGetir(); } catch (err) { modSonuc = { source: "none", models: [], error: hataTemizle(err) }; }
-          const modListe = Array.isArray(modSonuc?.models) ? modSonuc.models : [];
-          return { status: 200, contentType: "application/json", body: JSON.stringify({ source: modSonuc.source, models: modListe }) };
+          const kat = await katalogGorunur();
+          let hepsi = false;
+          try {
+            const v = query?.all;
+            hepsi = v === "1" || v === "true";
+          } catch {}
+          const liste = hepsi ? kat.tum : kat.gorunur;
+          const govde = {
+            source: kat.source,
+            models: liste,
+            counts: { catalog: kat.tum.length, visible: kat.gorunur.length, hidden: kat.gizliSay },
+            ...(kat.error ? { error: kat.error } : {}),
+          };
+          return jsonYanit(govde);
+        }
+        if (method === "GET" && pathname === "/api/state") {
+          let agentIdler = [];
+          try {
+            agentIdler = sortAgents(await listAgents());
+          } catch {}
+          if (!Array.isArray(agentIdler)) agentIdler = [];
+          let atama = {};
+          try {
+            atama = await readAssignments(agentIdler);
+          } catch {}
+          let st = { chains: {} };
+          try {
+            st = await stateOku();
+          } catch {}
+          const kat = await katalogGorunur();
+          const o = await ohmyCozumle();
+          const hostYolu = hostYoluCozumle();
+          const agents = agentIdler.map((id) => {
+            let cur = null;
+            try {
+              const v = atama[id];
+              if (typeof v === "string" && v !== "—" && v.includes("/")) cur = v;
+            } catch {}
+            let ch = null;
+            try {
+              const h = st.chains?.[id];
+              if (h != null && typeof h === "object") ch = h;
+            } catch {}
+            let primary = null;
+            try {
+              primary = refStr(ch?.primary) ?? cur;
+            } catch {}
+            return {
+              id,
+              current: cur,
+              chain: {
+                primary,
+                secondary: refStr(ch?.secondary),
+                tertiary: refStr(ch?.tertiary),
+              },
+            };
+          });
+          const models = kat.gorunur.map((m) => {
+            const r = { providerID: m?.providerID, id: m?.id };
+            try {
+              if (typeof m?.name === "string" && m.name.length > 0) r.name = m.name;
+            } catch {}
+            return r;
+          });
+          return jsonYanit({
+            ok: true,
+            server: { version: SERVER_VERSION, port: WEB_PORT },
+            meta: {
+              catalogCount: kat.tum.length,
+              visibleCount: kat.gorunur.length,
+              hiddenCount: kat.gizliSay,
+              hasOhMy: o.exists,
+              statePath: stateYolu,
+              ohMyConfigPath: o.path,
+              hostConfigPath: hostYolu,
+            },
+            agents,
+            models,
+          });
+        }
+        if (method === "POST" && pathname === "/api/save") {
+          let gov = null;
+          try {
+            gov = JSON.parse(govdeMetni || "");
+          } catch {
+            return hataYanit(400, "gecersiz JSON govde");
+          }
+          const gelen =
+            gov != null && typeof gov === "object" && gov.chains != null && typeof gov.chains === "object"
+              ? gov.chains
+              : null;
+          if (gelen == null) return hataYanit(400, "govde.chains yok");
+          let mevcut = null;
+          try {
+            const ham = await dosyaOku(stateYolu);
+            mevcut = ham != null ? JSON.parse(ham) : null;
+          } catch {
+            return hataYanit(500, "state okunamadi");
+          }
+          if (mevcut == null || typeof mevcut !== "object") mevcut = {};
+          if (mevcut.chains == null || typeof mevcut.chains !== "object") mevcut.chains = {};
+          for (const ajan of Object.keys(gelen)) {
+            try {
+              if (typeof ajan !== "string" || ajan.length === 0 || ajan.length > 128)
+                return hataYanit(400, `gecersiz ajan adi: ${ajan}`);
+              const giris = gelen[ajan];
+              if (giris == null || typeof giris !== "object") return hataYanit(400, `zincir gecersiz: ${ajan}`);
+              const onceki =
+                mevcut.chains[ajan] != null && typeof mevcut.chains[ajan] === "object" ? mevcut.chains[ajan] : {};
+              const yeni = {};
+              for (const slot of ["primary", "secondary", "tertiary"]) {
+                const v = giris[slot] ?? null;
+                if (v == null || v === "") {
+                  yeni[slot] = null;
+                  continue;
+                }
+                if (typeof v !== "string" || !v.includes("/")) return hataYanit(400, `gecersiz ref: ${ajan}.${slot}`);
+                const ref = strRef(v);
+                if (ref == null) return hataYanit(400, `gecersiz ref: ${ajan}.${slot}`);
+                // Variant: model ayniyse korunur, degistiysa variantsiz yazilir.
+                const eski = onceki[slot];
+                if (
+                  eski != null && typeof eski === "object" &&
+                  eski.providerID === ref.providerID && eski.id === ref.id &&
+                  typeof eski.variant === "string" && eski.variant.length > 0
+                ) {
+                  yeni[slot] = { providerID: ref.providerID, id: ref.id, variant: eski.variant };
+                } else {
+                  yeni[slot] = ref;
+                }
+              }
+              mevcut.chains[ajan] = yeni;
+            } catch {
+              return hataYanit(400, `zincir islenemedi: ${ajan}`);
+            }
+          }
+          mevcut.version = 1;
+          mevcut.updatedAt = new Date().toISOString();
+          try {
+            const fs = await import("node:fs/promises");
+            const path = await import("node:path");
+            try {
+              await fs.mkdir(path.dirname(stateYolu), { recursive: true });
+            } catch {}
+            await fs.writeFile(stateYolu, JSON.stringify(mevcut, null, 2), "utf8");
+          } catch {
+            return hataYanit(500, "state yazilamadi");
+          }
+          return jsonYanit({ ok: true, statePath: stateYolu, updatedAt: mevcut.updatedAt });
+        }
+        if (method === "POST" && pathname === "/api/apply") {
+          const notes = [];
+          const backups = [];
+          const uygulanan = [];
+          const hostGuncel = [];
+          let reload = "unsupported";
+          let st = null;
+          try {
+            const ham = await dosyaOku(stateYolu);
+            st = ham != null ? JSON.parse(ham) : null;
+          } catch {
+            return hataYanit(400, "state dosyasi okunamadi/parse edilemedi");
+          }
+          const chains =
+            st != null && typeof st === "object" && st.chains != null && typeof st.chains === "object"
+              ? st.chains
+              : null;
+          if (chains == null) return hataYanit(400, "state chains yok");
+          const o = await ohmyCozumle();
+          const hostYolu = hostYoluCozumle();
+          if (o.exists && o.path) {
+            try {
+              const fs = await import("node:fs/promises");
+              let ham = null;
+              try {
+                ham = await fs.readFile(o.path, "utf8");
+              } catch {
+                ham = null;
+              }
+              if (ham == null) {
+                notes.push("oh-my dosyasi okunamadi; degistirilmedi");
+              } else {
+                let cfg = null;
+                try {
+                  cfg = JSON.parse(ham);
+                } catch {
+                  cfg = null;
+                }
+                if (cfg == null || typeof cfg !== "object") {
+                  notes.push("oh-my JSON parse edilemedi; dosya degistirilmedi");
+                } else {
+                  if (cfg.agents == null || typeof cfg.agents !== "object") cfg.agents = {};
+                  let yazilacak = 0;
+                  for (const ajan of Object.keys(chains)) {
+                    try {
+                      const zincir = chains[ajan];
+                      if (zincir == null || typeof zincir !== "object") continue;
+                      const girdiler = [zincir.primary, zincir.secondary, zincir.tertiary].filter(
+                        (e) => e != null && typeof e === "object" && typeof e.providerID === "string" && typeof e.id === "string"
+                      );
+                      if (girdiler.length === 0) continue;
+                      const stil = ohmyStilBul(cfg, ajan);
+                      const dizi = girdiler.map((e) => {
+                        const ref = `${e.providerID}/${e.id}`;
+                        if (stil === "string") return ref;
+                        if (typeof e.variant === "string" && e.variant.length > 0) return { id: ref, variant: e.variant };
+                        return { id: ref };
+                      });
+                      const onceki =
+                        cfg.agents[ajan] != null && typeof cfg.agents[ajan] === "object" ? cfg.agents[ajan] : {};
+                      cfg.agents[ajan] = { ...onceki, model: dizi };
+                      uygulanan.push(ajan);
+                      yazilacak++;
+                    } catch {}
+                  }
+                  if (yazilacak > 0) {
+                    try {
+                      await fs.copyFile(o.path, `${o.path}.model-router.bak`);
+                      backups.push(`${o.path}.model-router.bak`);
+                    } catch {
+                      return hataYanit(500, "oh-my yedegi alinamadi; dosya degistirilmedi");
+                    }
+                    try {
+                      await fs.writeFile(o.path, JSON.stringify(cfg, null, 2), "utf8");
+                    } catch {
+                      notes.push("oh-my yazilamadi");
+                    }
+                  } else {
+                    notes.push("oh-my: yazilacak zincir yok");
+                  }
+                }
+              }
+            } catch (err) {
+              notes.push(`oh-my hatasi: ${hataTemizle(err)}`);
+            }
+          } else {
+            notes.push("oh-my dosyasi yok; host yolu kullanilacak");
+          }
+          if (hostYolu) {
+            try {
+              const fs = await import("node:fs/promises");
+              let hham = null;
+              try {
+                hham = await fs.readFile(hostYolu, "utf8");
+              } catch {
+                hham = null;
+              }
+              if (hham == null) {
+                notes.push("host config bulunamadi; host guncellenmedi");
+              } else {
+                let hcfg = null;
+                try {
+                  hcfg = JSON.parse(hham);
+                } catch {
+                  hcfg = null;
+                }
+                if (hcfg != null && typeof hcfg === "object" && hcfg.agent != null && typeof hcfg.agent === "object") {
+                  let degisti = false;
+                  for (const ajan of Object.keys(chains)) {
+                    try {
+                      if (!(ajan in hcfg.agent)) continue; // yeni ajan anahtari EKLENMEZ
+                      const blk = hcfg.agent[ajan];
+                      if (blk == null || typeof blk !== "object") continue;
+                      const prim = refStr(chains[ajan]?.primary);
+                      if (!prim) continue;
+                      hostGuncel.push(ajan);
+                      if (blk.model !== prim) {
+                        blk.model = prim;
+                        degisti = true;
+                      }
+                    } catch {}
+                  }
+                  if (degisti) {
+                    try {
+                      await fs.copyFile(hostYolu, `${hostYolu}.model-router.bak`);
+                      backups.push(`${hostYolu}.model-router.bak`);
+                    } catch {
+                      notes.push("host yedegi alinamadi; host degistirilmedi");
+                      degisti = false;
+                    }
+                    if (degisti) {
+                      try {
+                        await fs.writeFile(hostYolu, JSON.stringify(hcfg, null, 2), "utf8");
+                      } catch {
+                        notes.push("host yazilamadi");
+                      }
+                    }
+                  }
+                } else {
+                  // JSONC (yorumlu) dususu: blok-kapsamli regex ile sadece model degeri degisir.
+                  // Yeni ajan anahtari EKLENMEZ; dogrulama hedefli geri-okumayla yapilir.
+                  const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                  let yeni = hham;
+                  const dokunulan = [];
+                  for (const ajan of Object.keys(chains)) {
+                    try {
+                      const prim = refStr(chains[ajan]?.primary);
+                      if (!prim) continue;
+                      const blokRe = new RegExp(`"${esc(ajan)}"\\s*:\\s*\\{[^}]*?"model"\\s*:\\s*"[^"]*"`);
+                      const m = yeni.match(blokRe);
+                      if (!m) continue; // blok yoksa EKLEME
+                      yeni = yeni.replace(blokRe, (b) => {
+                        try {
+                          return b.replace(/("model"\s*:\s*")[^"]*(")/, `$1${prim}$2`);
+                        } catch {
+                          return b;
+                        }
+                      });
+                      dokunulan.push(ajan);
+                    } catch {}
+                  }
+                  // Dogrulama: her dokunulan blokta model degeri beklenen primary mi?
+                  let gecerli = true;
+                  for (const ajan of dokunulan) {
+                    try {
+                      const prim = refStr(chains[ajan]?.primary);
+                      const blokRe = new RegExp(`"${esc(ajan)}"\\s*:\\s*\\{[^}]*?"model"\\s*:\\s*"([^"]*)"`);
+                      const m = yeni.match(blokRe);
+                      if (!m || m[1] !== prim) {
+                        gecerli = false;
+                        break;
+                      }
+                    } catch {
+                      gecerli = false;
+                      break;
+                    }
+                  }
+                  if (dokunulan.length > 0 && gecerli) {
+                    try {
+                      await fs.copyFile(hostYolu, `${hostYolu}.model-router.bak`);
+                      backups.push(`${hostYolu}.model-router.bak`);
+                    } catch {
+                      notes.push("host yedegi alinamadi; host degistirilmedi");
+                      gecerli = false;
+                    }
+                    if (gecerli) {
+                      try {
+                        await fs.writeFile(hostYolu, yeni, "utf8");
+                        for (const a of dokunulan) hostGuncel.push(a);
+                      } catch {
+                        notes.push("host yazilamadi");
+                      }
+                    }
+                  } else if (dokunulan.length > 0) {
+                    notes.push("host regex dogrulamasi basarisiz; dosya degistirilmedi");
+                  }
+                }
+              }
+            } catch (err) {
+              notes.push(`host hatasi: ${hataTemizle(err)}`);
+            }
+          }
+          try {
+            if (typeof ctx.agent?.reload === "function") {
+              await ctx.agent.reload();
+              reload = "ok";
+            } else {
+              reload = "unsupported";
+            }
+          } catch {
+            reload = "failed";
+          }
+          let target = "host";
+          try {
+            if (o.exists) target = hostGuncel.length > 0 ? "both" : "oh-my";
+          } catch {}
+          return jsonYanit({ ok: true, target, agents: uygulanan, hostUpdated: hostGuncel, reload, backups, notes });
         }
         return { status: 404, contentType: "application/json", body: JSON.stringify({ error: "not found" }) };
       } catch (err) {
@@ -692,16 +1304,24 @@ async function setup(ctx) {
         try {
           sunucu = globalThis.Bun.serve({
             hostname: "127.0.0.1",
-            port: PROBE_PORT,
+            port: WEB_PORT,
             fetch: async (req) => {
               let pathname = "/";
               let method = "GET";
+              let query = {};
+              let govde = "";
               try {
                 const u = new URL(req.url);
                 pathname = u.pathname || "/";
                 method = req.method || "GET";
+                query = Object.fromEntries(u.searchParams.entries());
+                if (method === "POST") {
+                  try {
+                    govde = await req.text();
+                  } catch {}
+                }
               } catch {}
-              const yanit = await istekKarsila(method, pathname);
+              const yanit = await istekKarsila(method, pathname, query, govde);
               try { await logSatir(`${new Date().toISOString()} ${method} ${pathname} ${yanit.status}`); } catch {}
               return new Response(yanit.body, {
                 status: yanit.status,
@@ -725,12 +1345,37 @@ async function setup(ctx) {
         const srv = http.createServer((req, res) => {
           (async () => {
             let pathname = "/";
+            let query = {};
             try {
               const u = new URL(req.url || "/", "http://127.0.0.1");
               pathname = u.pathname || "/";
+              query = Object.fromEntries(u.searchParams.entries());
             } catch {}
             const method = req.method || "GET";
-            const yanit = await istekKarsila(method, pathname);
+            let govde = "";
+            if (method === "POST") {
+              try {
+                govde = await new Promise((resolve) => {
+                  let b = "";
+                  let asim = false;
+                  try {
+                    req.on("data", (c) => {
+                      try {
+                        if (!asim) {
+                          b += String(c);
+                          if (b.length > 1048576) asim = true;
+                        }
+                      } catch {}
+                    });
+                    req.on("end", () => resolve(asim ? "" : b));
+                    req.on("error", () => resolve(""));
+                  } catch {
+                    resolve("");
+                  }
+                });
+              } catch {}
+            }
+            const yanit = await istekKarsila(method, pathname, query, govde);
             try { await logSatir(`${new Date().toISOString()} ${method} ${pathname} ${yanit.status}`); } catch {}
             res.writeHead(yanit.status, { "Content-Type": yanit.contentType || "application/json" });
             res.end(yanit.body);
@@ -752,7 +1397,7 @@ async function setup(ctx) {
           };
           srv.once("error", onHata);
           srv.once("listening", onDinle);
-          srv.listen(PROBE_PORT, "127.0.0.1");
+          srv.listen(WEB_PORT, "127.0.0.1");
         });
         sunucu = srv;
         baglanti = "node:http";
@@ -762,8 +1407,8 @@ async function setup(ctx) {
       }
     }
     if (sunucu != null) {
-      try { await logSatir(`${new Date().toISOString()} probe dinliyor ${baglanti} 127.0.0.1:${PROBE_PORT}`); } catch {}
-      try { console.log(`[model-router] probe http 127.0.0.1:${PROBE_PORT} (${baglanti})`); } catch {}
+      try { await logSatir(`${new Date().toISOString()} web dinliyor ${baglanti} 127.0.0.1:${WEB_PORT}`); } catch {}
+      try { console.log(`[model-router] web http 127.0.0.1:${WEB_PORT} (${baglanti})`); } catch {}
       track(() => {
         try { if (typeof sunucu.close === "function") sunucu.close(); } catch {}
         try { if (typeof sunucu.stop === "function") sunucu.stop(); } catch {}

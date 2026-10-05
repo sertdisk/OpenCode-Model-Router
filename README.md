@@ -72,3 +72,43 @@ Format:
 node --check src/model-router.js
 npm run check
 ```
+
+## Web UI (yerel sunucu)
+
+Plugin, `127.0.0.1:37337` portunda bir web sunucusu acar
+(override: `MODEL_ROUTER_PORT` ortam degiskeni).
+
+- Tarayicida ac: `http://127.0.0.1:37337`
+- `GET /api/state`: ajanlar (mevcut atama + zincir), gorunur modeller, sayaçlar
+  (`catalogCount` / `visibleCount` / `hiddenCount`), oh-my varligi ve dosya yollari.
+- `GET /api/models`: gorunur modeller; `?all=1` ile filtresiz katalog (debug).
+- `POST /api/save` (`{ chains: { "<ajan>": { primary, secondary, tertiary } } }`,
+  degerler `"provider/id"` ya da `null`): state dosyasina birlestirerek yazar
+  (diger ajanlar korunur; model degismediyse variant korunur).
+- `POST /api/apply` (govdesiz): state zincirlerini gercek config'lere uygular —
+  oh-my varsa `oh-my-opencode-slim.json` icinde top-level `agents.<ajan>.model`
+  dizisi (eleman formati dosyadaki mevcut kullanimla ayni: `{id}` objesi ya da
+  string; diger alanlar/presetler korunur), host `opencode.jsonc` icinde ZATEN
+  var olan `agent.<ajan>` bloklarinin `model` degeri primary ile guncellenir
+  (yeni ajan anahtari eklenmez). Her dosyadan once `<dosya>.model-router.bak`
+  yedegi alinir. Sonunda `ctx.agent.reload` guard'li denenir.
+
+Statik UI dosyalari (`index.html`, `app.js`, `style.css`) su sirada aranir:
+`MODEL_ROUTER_WEB_DIR` -> `~/.config/opencode/model-router-web/`
+(`install-dev.ps1` buraya kopyalar) -> repo `web/` yedegi.
+
+Test path override'lari (prod varsayilanlari parantezde):
+`MODEL_ROUTER_STATE_PATH` (state dosyasi), `MODEL_ROUTER_OHMY_PATH`
+(`~/.config/opencode/oh-my-opencode-slim.json`), `MODEL_ROUTER_HOST_CONFIG`
+(`~/.config/opencode/opencode.jsonc`), `MODEL_ROUTER_WEB_DIR`.
+
+## Dev sunucusu (mock ctx)
+
+```sh
+bun tools\dev-server.mjs
+```
+
+Mock ctx (12 ajan + ornek modeller) ile plugini standalone calistirir,
+`/api/state`, `/api/models`, `/api/save`, `/api/apply` self-testini gecici
+dosyalar uzerinde kosar (gercek config'e dokunmaz), sonucu konsola yazar ve
+sureci acik tutar (kapatmak icin Ctrl+C).
