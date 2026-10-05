@@ -168,6 +168,7 @@ try {
       orchestrator: { primary: "mock-a/team/model-x", secondary: "mock-b/think", tertiary: null },
       librarian: { primary: "mock-a/m1", secondary: null, tertiary: null },
       explorer: { primary: "mock-b/scout", secondary: null, tertiary: null },
+      compaction: { primary: "mock-a/m-alpha", secondary: null, tertiary: null },
     },
   };
   const sv = await (
@@ -203,6 +204,9 @@ try {
   console.log(`[test] orchestrator oh-my obje formu (varyantsiz): ${orkOk ? "TAMAM" : "HATA-" + kisa(orkModel, 120)}`);
   console.log(`[test] ohmy preset korundu mu: ${typeof ohmySon.presets?.dev?.orchestrator?.model === "string" ? "evet" : "HAYIR"}`);
   console.log(`[test] host orchestrator.model: ${hostSon.agent?.orchestrator?.model} plan.model: ${hostSon.agent?.plan?.model} librarian eklendi mi: ${"librarian" in (hostSon.agent || {}) ? "HAYIR-EKLENMIS" : "hayir"}`);
+  console.log('[test] ohmy agents.compaction yok (beklenen): ' + ("compaction" in (ohmySon.agents||{}) ? "HAYIR-VAR" : "TAMAM"));
+  console.log('[test] host compaction eklenmedi (beklenen): ' + ("compaction" in (hostSon.agent||{}) ? "HAYIR-VAR" : "TAMAM"));
+  console.log('[test] apply agents listesi compaction iceriyor mu: ' + ((ap.agents||[]).includes('compaction') ? 'HAYIR-VAR' : 'TAMAM'));
 
   // 6) apply regex dususu: host'a yorum ekle (JSON.parse basarisiz) ve tekrar uygula
   writeFileSync(hostYolu, `{\n  // yorum: regex dususu testi\n  "agent": {\n    "orchestrator": {\n      "model": "mock-a/old-model"\n    }\n  }\n}\n`, "utf8");

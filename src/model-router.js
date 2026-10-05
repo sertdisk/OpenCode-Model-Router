@@ -1174,6 +1174,7 @@ async function setup(ctx) {
                 if (cfg == null || typeof cfg !== "object") {
                   notes.push("oh-my JSON parse edilemedi; dosya degistirilmedi");
                 } else {
+                  const OHMY_BILINEN = new Set(["orchestrator","explorer","librarian","oracle","designer","fixer","observer","council","councillor"]);
                   if (cfg.agents == null || typeof cfg.agents !== "object") cfg.agents = {};
                   let yazilacak = 0;
                   for (const ajan of Object.keys(chains)) {
@@ -1184,6 +1185,10 @@ async function setup(ctx) {
                         (e) => e != null && typeof e === "object" && typeof e.providerID === "string" && typeof e.id === "string"
                       );
                       if (girdiler.length === 0) continue;
+                      if (!(OHMY_BILINEN.has(ajan) || Object.prototype.hasOwnProperty.call(cfg.agents, ajan))) {
+                        notes.push(`oh-my atlandi: ${ajan} (bilinen oh-my ajani degil)`);
+                        continue;
+                      }
                       const stil = ohmyStilBul(cfg, ajan);
                       const varyantVar = girdiler.some((e) => typeof e.variant === "string" && e.variant.length > 0);
                       const dizi = girdiler.map((e) => {
