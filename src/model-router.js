@@ -143,6 +143,41 @@ async function setup(ctx) {
     } catch {}
     return null;
   };
+  // Gorunurluk deposu okuma: state(name,key,value) semasi (Desktop drafts.sqlite:
+  // name='opencode.global.dat', key='model'). Tablo adi sabitlenmez — name/key/value
+  // kolonlu tablolar kesfedilir; bulunamazsa eski tek-sutun aramaya dusulur.
+  const sqliteModelDeger = async (dbYolu) => {
+    try {
+      const tablolar = await sqliteSorgu(dbYolu, "SELECT name FROM sqlite_master WHERE type='table'");
+      if (Array.isArray(tablolar)) {
+        for (const satir of tablolar) {
+          const tablo = (satir && (satir.name ?? satir.tbl_name)) || null;
+          if (typeof tablo !== "string" || tablo.startsWith("sqlite_")) continue;
+          const gT = tablo.replace(/"/g, "");
+          let kolonlar = [];
+          try {
+            const bilgi = await sqliteSorgu(dbYolu, `PRAGMA table_info("${gT}")`);
+            if (Array.isArray(bilgi)) kolonlar = bilgi.map((k) => k?.name).filter((k) => typeof k === "string");
+          } catch { continue; }
+          const alt = kolonlar.map((k) => k.toLowerCase());
+          const adKolon = kolonlar[alt.indexOf("name")] ?? null;
+          const anahtarKolon = kolonlar[alt.indexOf("key")] ?? null;
+          const degerKolon = kolonlar[alt.indexOf("value")] ?? null;
+          if (adKolon && anahtarKolon && degerKolon) {
+            try {
+              const kayitlar = await sqliteSorgu(dbYolu, `SELECT "${degerKolon.replace(/"/g, "")}" AS v FROM "${gT}" WHERE "${adKolon.replace(/"/g, "")}" = 'opencode.global.dat' AND "${anahtarKolon.replace(/"/g, "")}" = 'model' LIMIT 3`);
+              if (Array.isArray(kayitlar)) for (const k of kayitlar) {
+                if (typeof k?.v === "string" && k.v.length > 0) return k.v;
+              }
+            } catch {}
+          }
+        }
+      }
+      const eski = await sqliteDegerBul(dbYolu, "opencode.global.datmodel");
+      if (typeof eski === "string") return eski;
+    } catch {}
+    return null;
+  };
   const sqliteDegerBul = async (dbYolu, anahtar) => {
     const gAnahtar = String(anahtar).replace(/'/g, "''");
     try {
@@ -228,7 +263,7 @@ async function setup(ctx) {
     for (const dbYolu of adaylar) {
       if (gizliKume != null) break;
       let ham = null;
-      try { ham = await sqliteDegerBul(dbYolu, "opencode.global.datmodel"); } catch {}
+      try { ham = await sqliteModelDeger(dbYolu); } catch {}
       if (typeof ham !== "string") continue;
       try {
         const j = JSON.parse(ham);
