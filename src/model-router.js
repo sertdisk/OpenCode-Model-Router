@@ -121,61 +121,182 @@ async function setup(ctx) {
   // Filtre: SADECE enabled modeller listelenir (/models secicisiyle ayni kural).
   //   - provider kaydi `disabled === true` ise o provider ATLANIR (devre-disi sayacina).
   //   - model `info?.enabled !== true` ise ATLANIR (kapali sayacina; status'e bakilmaz).
-  // Guvenlik agi: filtre sonucu bossa filtre yok sayilip tumu alinir (bos picker'dan iyidir).
-  // Bu probe asla setup'u devirmez (guard + try/catch).
-  let cachedModels = null;
-  let probeDevreDisi = 0;
-  let probeKapali = 0;
-  let probeFallback = false;
+  // Faz-3 — katalog + baglanti + gorunurluk (ayarlar > modeller ekranini aynen yansitir).
+  // Katalog HAM toplanir (eleme yok); eleme execute aninda uygulanir cunku korumali
+  // saglayicilar (mevcut atamalar + state zincirleri) ancak orada bilinir.
+  // Tum kaynaklar guard'li + fail-open; sirlar (token/deger) ASLA okunmaz ve loglanmaz.
+  const ENV_SAGLAYICI = { OPENROUTER_API_KEY: "openrouter", DEEPSEEK_API_KEY: "deepseek", ANTHROPIC_API_KEY: "anthropic", OPENAI_API_KEY: "openai", GEMINI_API_KEY: "gemini", GOOGLE_GENERATIVE_AI_API_KEY: "gemini", GROQ_API_KEY: "groq", MISTRAL_API_KEY: "mistral", XAI_API_KEY: "xai", CEREBRAS_API_KEY: "cerebras", COHERE_API_KEY: "cohere" };
+  const evKlasoru = (() => { try { return process.env.USERPROFILE || process.env.HOME || ""; } catch { return ""; } })();
+  const dosyaOku = async (yol) => { try { const fs = await import("node:fs/promises"); return await fs.readFile(yol, "utf8"); } catch { return null; } };
+  const sqliteSorgu = async (dbYolu, sql) => {
+    try {
+      try {
+        const { Database } = await import("bun:sqlite");
+        const db = new Database(dbYolu, { readonly: true });
+        try { return db.query(sql).all(); } finally { try { db.close(); } catch {} }
+      } catch {}
+      try {
+        const { DatabaseSync } = await import("node:sqlite");
+        const db = new DatabaseSync(dbYolu);
+        try { return db.prepare(sql).all(); } finally { try { db.close(); } catch {} }
+      } catch {}
+    } catch {}
+    return null;
+  };
+  const sqliteDegerBul = async (dbYolu, anahtar) => {
+    const gAnahtar = String(anahtar).replace(/'/g, "''");
+    try {
+      const tablolar = await sqliteSorgu(dbYolu, "SELECT name FROM sqlite_master WHERE type='table'");
+      if (!Array.isArray(tablolar)) return null;
+      for (const satir of tablolar) {
+        const tablo = (satir && (satir.name ?? satir.tbl_name)) || null;
+        if (typeof tablo !== "string" || tablo.startsWith("sqlite_")) continue;
+        const gTablo = tablo.replace(/"/g, "");
+        let kolonlar = [];
+        try {
+          const bilgi = await sqliteSorgu(dbYolu, `PRAGMA table_info("${gTablo}")`);
+          if (Array.isArray(bilgi)) kolonlar = bilgi.map((k) => k?.name).filter((k) => typeof k === "string");
+        } catch { continue; }
+        for (const kolon of kolonlar) {
+          const gKolon = String(kolon).replace(/"/g, "");
+          let kayitlar = null;
+          try { kayitlar = await sqliteSorgu(dbYolu, `SELECT * FROM "${gTablo}" WHERE "${gKolon}" = '${gAnahtar}' LIMIT 5`); } catch { continue; }
+          if (!Array.isArray(kayitlar) || kayitlar.length === 0) continue;
+          for (const kayit of kayitlar) {
+            let enUzun = null;
+            for (const k of Object.keys(kayit)) {
+              const v = kayit[k];
+              if (typeof v === "string" && v !== anahtar && (enUzun == null || v.length > enUzun.length)) enUzun = v;
+            }
+            if (enUzun != null) return enUzun;
+          }
+        }
+      }
+    } catch {}
+    return null;
+  };
+  // Bagli saglayici kumesi (null = tespit edilemedi, saglayici filtresi uygulanmaz).
+  let bagliKume = null;
+  try {
+    const kume = new Set();
+    try {
+      const ham = evKlasoru ? await dosyaOku(`${evKlasoru}/.local/share/opencode/auth.json`) : null;
+      if (ham != null) { const j = JSON.parse(ham); if (j && typeof j === "object") for (const k of Object.keys(j)) kume.add(String(k).toLowerCase()); }
+    } catch {}
+    try {
+      const cfgSag = ctx?.config?.provider;
+      if (cfgSag && typeof cfgSag === "object") for (const k of Object.keys(cfgSag)) kume.add(String(k).toLowerCase());
+    } catch {}
+    try {
+      for (const [envAd, pid] of Object.entries(ENV_SAGLAYICI)) {
+        let v = null;
+        try { v = process.env[envAd]; } catch {}
+        if (typeof v === "string" && v.length > 0) kume.add(pid);
+      }
+    } catch {}
+    try {
+      const dbYolu = evKlasoru ? `${evKlasoru}/.local/share/opencode/opencode.db` : null;
+      if (dbYolu) {
+        const tablolar = await sqliteSorgu(dbYolu, "SELECT name FROM sqlite_master WHERE type='table'");
+        const cred = Array.isArray(tablolar) ? tablolar.map((t) => t?.name).find((n) => typeof n === "string" && /credential/i.test(n)) : null;
+        if (cred) {
+          const gT = String(cred).replace(/"/g, "");
+          let kolonlar = [];
+          try { const b = await sqliteSorgu(dbYolu, `PRAGMA table_info("${gT}")`); if (Array.isArray(b)) kolonlar = b.map((k) => k?.name).filter((k) => typeof k === "string"); } catch {}
+          const kimlik = kolonlar.filter((k) => /provider|type|kind|slug|service|integration/i.test(k) && !/token|secret|key|auth|data|value|payload|password/i.test(k));
+          for (const kolon of kimlik.slice(0, 4)) {
+            try {
+              const satirlar = await sqliteSorgu(dbYolu, `SELECT DISTINCT "${String(kolon).replace(/"/g, "")}" AS v FROM "${gT}" LIMIT 50`);
+              if (Array.isArray(satirlar)) for (const s of satirlar) { const v = s?.v; if (typeof v === "string" && v.length > 0 && v.length < 64) kume.add(v.toLowerCase()); }
+            } catch {}
+          }
+        }
+      }
+    } catch {}
+    if (kume.size > 0) bagliKume = kume;
+  } catch {}
+  // Gizli model kumesi — ayarlar > modeller ekrani ("pid/mid" anahtarlari, null = okunamadi).
+  let gizliKume = null;
+  try {
+    const appData = (() => { try { return process.env.APPDATA || ""; } catch { return ""; } })();
+    const adaylar = [];
+    if (appData) adaylar.push(`${appData}/ai.opencode.desktop/drafts.sqlite`);
+    if (evKlasoru) {
+      adaylar.push(`${evKlasoru}/Library/Application Support/ai.opencode.desktop/drafts.sqlite`);
+      adaylar.push(`${evKlasoru}/.config/ai.opencode.desktop/drafts.sqlite`);
+    }
+    for (const dbYolu of adaylar) {
+      if (gizliKume != null) break;
+      let ham = null;
+      try { ham = await sqliteDegerBul(dbYolu, "opencode.global.datmodel"); } catch {}
+      if (typeof ham !== "string") continue;
+      try {
+        const j = JSON.parse(ham);
+        const dizi = Array.isArray(j?.user) ? j.user : [];
+        const kume = new Set();
+        for (const k of dizi) {
+          if (k?.visibility === "hide" && typeof k?.providerID === "string" && typeof k?.modelID === "string") {
+            kume.add(`${k.providerID.toLowerCase()}/${k.modelID.replace(/^~/, "").toLowerCase()}`);
+          }
+        }
+        gizliKume = kume;
+      } catch {}
+    }
+  } catch {}
+  // Ham katalog (elemesiz; ad + bayraklarla birlikte tutulur).
+  let katalogHam = null;
   try {
     if (typeof ctx?.catalog?.transform === "function") {
-      const found = [];
-      const foundAll = [];
-      let elendiDevreDisi = 0;
-      let elendiKapali = 0;
+      const ham = [];
       await ctx.catalog.transform((draft) => {
-        const recs = draft.provider.list(); // readonly CatalogProviderRecord[]: { provider: {id, disabled?, ...}, models: ReadonlyMap<id, ModelV2Info & {enabled}> }
+        const recs = draft.provider.list();
         for (const rec of recs ?? []) {
           const pid = rec?.provider?.id;
           if (typeof pid !== "string") continue;
           let entries = [];
           try { entries = rec.models instanceof Map ? [...rec.models.entries()] : Object.entries(rec.models ?? {}); } catch { continue; }
-          if (rec?.provider?.disabled === true) {
-            for (const [mid] of entries) {
-              if (typeof mid !== "string" || mid.length === 0) continue;
-              foundAll.push({ providerID: pid, id: mid });
-              elendiDevreDisi += 1;
-            }
-            continue;
-          }
           for (const [mid, info] of entries) {
             if (typeof mid !== "string" || mid.length === 0) continue;
-            foundAll.push({ providerID: pid, id: mid });
-            if (info?.enabled !== true) {
-              elendiKapali += 1;
-              continue;
-            }
-            found.push({ providerID: pid, id: mid });
+            ham.push({
+              providerID: pid,
+              id: mid,
+              name: typeof info?.name === "string" ? info.name : "",
+              enabled: info?.enabled,
+              status: typeof info?.status === "string" ? info.status : "",
+              pDisabled: rec?.provider?.disabled === true,
+            });
           }
         }
       });
-      let picked = found;
-      if (picked.length === 0 && foundAll.length > 0) {
-        picked = foundAll;
-        probeFallback = true;
-      }
-      probeDevreDisi = elendiDevreDisi;
-      probeKapali = elendiKapali;
-      if (picked.length > 0) cachedModels = dedupChain(picked).map((e) => ({ providerID: e.providerID, id: e.id }));
+      if (ham.length > 0) katalogHam = dedupChain(ham);
     }
   } catch { /* probe asla setup'u devirmez */ }
-  try {
-    const nProv = cachedModels != null ? new Set(cachedModels.map((m) => m.providerID)).size : 0;
-    if (cachedModels != null) {
-      console.log(`[model-router] catalog probe: ${cachedModels.length} model / ${nProv} provider (${probeDevreDisi} elendi-devre-disi/${probeKapali} elendi-kapali${probeFallback ? ", filtre-bos-fallback" : ""})`);
-    } else {
-      console.log("[model-router] catalog probe: katalog okunamadi");
+  // Execute-aninda eleme: bagli + gizli-degil + kapali-degil + deprecated-degil.
+  // Korumali saglayicilar (mevcut atamalar + state zincirleri) baglanti filtresinden muaftir.
+  const secenekFiltrele = (ham, bagli, gizli, korumali) => {
+    const cikti = [];
+    const say = { bagli: 0, gizli: 0, kapali: 0, eski: 0, sagKapali: 0 };
+    for (const m of ham ?? []) {
+      const pid = String(m.providerID || "").toLowerCase();
+      const anahtar = `${pid}/${String(m.id || "").toLowerCase()}`;
+      if (m.pDisabled === true) { say.sagKapali++; continue; }
+      if (m.enabled === false) { say.kapali++; continue; }
+      if (m.status === "deprecated") { say.eski++; continue; }
+      if (gizli != null && gizli.has(anahtar)) { say.gizli++; continue; }
+      if (bagli != null && !bagli.has(pid) && !korumali.has(pid)) { say.bagli++; continue; }
+      cikti.push({ providerID: m.providerID, id: m.id, name: m.name });
     }
+    let geriDonus = false;
+    let liste = cikti;
+    if (liste.length === 0 && (ham ?? []).length > 0) {
+      liste = ham.map((m) => ({ providerID: m.providerID, id: m.id, name: m.name }));
+      geriDonus = true;
+    }
+    return { liste, say, geriDonus };
+  };
+  try {
+    const nHam = katalogHam != null ? katalogHam.length : 0;
+    console.log(`[model-router] catalog probe: ${nHam} ham model (bagli:${bagliKume != null ? bagliKume.size : "yok"}/gizli:${gizliKume != null ? gizliKume.size : "yok"})`);
   } catch {
     // log asla setup'u devirmez
   }
@@ -213,11 +334,11 @@ async function setup(ctx) {
 
   // Secondary/tertiary her zaman sadece state dosyasinda durur
   // (retry steering sonraki fazda bu dosyayi okuyacak).
-  const buildInstruction = (names, assign, hasOhMy, signals) => {
+  const buildInstruction = (names, assign, hasOhMy, signals, secenekler) => {
     const agentLines = names.map((n) => `  - ${n} (mevcut: ${assign[n] ?? "—"})`).join("\n");
     const modelBlock =
-      cachedModels != null
-        ? `Model secenekleri (kesfedilen katalogdan, provider/id formatinda; liste = opencode katalogundaki enabled modeller):\n${cachedModels.map((m) => `  - ${m.providerID}/${m.id}`).join("\n")}`
+      secenekler != null
+        ? `Model secenekleri (ayarlar > modeller ekranindaki aktif kumeyle ayni kural: bagli saglayici + gizli-degil; ad parantezde):\n${secenekler.map((m) => `  - ${m.providerID}/${m.id}${m.name ? ` — ${m.name}` : ""}`).join("\n")}`
         : "Kesfedilmis model katalogu yok. Model listesini ASLA uydurma/tahmin etme. `question` ile SADECE ajan sorusunu sor, model sorularinda secenek sunma; once `opencode models` komutunun GERCEK ciktisini alip o ciktiyi kullaniciya gosterip onay iste. Onaylanan ciktidaki SADECE aktif (auth'lu) saglayici ve modelleri secenek yap. Ayni model farkli saglayicida AYRI secenektir (provider/id ciftiyle listele).";
     const applyBlock = hasOhMy
       ? "Secilen primary'yi HEMEN uygula: oh-my-oh-my slim config dosyasi (`oh-my-opencode-slim.json`) icinde `agents.<ajan>.model` alanina yaz. Boyle bir alan/blok yoksa host config'e dokunma, sadece state dosyasina yaz."
@@ -275,7 +396,28 @@ async function setup(ctx) {
               const names = sortAgents(await listAgents());
               const { hasOhMy, signals } = probeOhMy();
               const assign = await readAssignments(names);
-              const text = buildInstruction(names, assign, hasOhMy, signals);
+              // Korumali saglayicilar: mevcut atamalar + state zincirleri (baglanti filtresinden muaf).
+              const korumali = new Set();
+              for (const n of names) {
+                const cur = assign[n];
+                if (typeof cur === "string" && cur.includes("/")) korumali.add(cur.split("/")[0].toLowerCase());
+              }
+              try {
+                const sh = await dosyaOku(STATE_PATH);
+                if (sh != null) {
+                  const sj = JSON.parse(sh);
+                  const ch = sj?.chains;
+                  if (ch && typeof ch === "object") for (const k of Object.keys(ch)) {
+                    for (const slot of ["primary", "secondary", "tertiary"]) {
+                      const p = ch[k]?.[slot]?.providerID;
+                      if (typeof p === "string") korumali.add(p.toLowerCase());
+                    }
+                  }
+                }
+              } catch {}
+              const filtre = secenekFiltrele(katalogHam, bagliKume, gizliKume, korumali);
+              try { console.log(`[model-router] secenek: ${filtre.liste.length} model (e-bagli:${filtre.say.bagli}/e-gizli:${filtre.say.gizli}/e-kapali:${filtre.say.kapali}/e-eski:${filtre.say.eski}/e-sag:${filtre.say.sagKapali}${filtre.geriDonus ? ", geri-donus" : ""})`); } catch {}
+              const text = buildInstruction(names, assign, hasOhMy, signals, filtre.liste);
               const sid = invocation?.sessionID;
               // oh-my yolu: invocation.sessionID + ctx.session.prompt (guard'li).
               try {
