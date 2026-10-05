@@ -519,6 +519,258 @@ async function setup(ctx) {
     console.log("[model-router] retry hook failed", err?.message ?? err);
   }
 
+  // Yerel web sunucu probe (port 37337) — feasibility: runtime port acabiliyor mu,
+  // hangi veri kaynagi calisiyor. Mevcut akislara dokunmaz; hata verirse sessizce
+  // gecilir, dispose sunucuyu kapatir. Tum import'lar dinamik ve guard'li.
+  try {
+    const PROBE_PORT = 37337;
+    const LOG_PATH = STATE_PATH.replace(/model-router\.json$/, "model-router-server.log");
+    const logSatir = async (satir) => {
+      try {
+        const fs = await import("node:fs/promises");
+        await fs.appendFile(LOG_PATH, `${satir}\n`, "utf8");
+      } catch { /* log asla setup'u devirmez */ }
+    };
+    const hataTemizle = (err, redakte) => {
+      try {
+        let m = String(err?.message ?? err).slice(0, 200);
+        if (typeof redakte === "string" && redakte.length > 0 && m.includes(redakte))
+          m = m.split(redakte).join("[redacted]");
+        return m;
+      } catch { return "unknown"; }
+    };
+    let hasBun = false;
+    let hasBunServe = false;
+    let nodeHttpOk = false;
+    try { hasBun = typeof globalThis.Bun !== "undefined"; } catch {}
+    try { hasBunServe = typeof globalThis.Bun?.serve === "function"; } catch {}
+    try {
+      const h = await import("node:http");
+      nodeHttpOk = h != null && typeof h.createServer === "function";
+    } catch {}
+    let nodeSurum = "unknown";
+    try { if (typeof process?.version === "string" && process.version) nodeSurum = process.version; } catch {}
+    // Model listesi normalize: array ya da {data:[...]}; elemanlardan providerID + (id|modelID).
+    const modelNormalize = (ham) => {
+      const dizi = Array.isArray(ham) ? ham : ham != null && Array.isArray(ham.data) ? ham.data : [];
+      const out = [];
+      for (const m of dizi) {
+        try {
+          const pid = m?.providerID ?? m?.provider ?? null;
+          const mid = m?.id ?? m?.modelID ?? m?.model ?? null;
+          if (typeof pid === "string" && pid.length > 0 && typeof mid === "string" && mid.length > 0) {
+            const rec = { providerID: pid, id: mid };
+            if (typeof m?.name === "string" && m.name.length > 0) rec.name = m.name;
+            out.push(rec);
+          }
+        } catch {}
+      }
+      return out;
+    };
+    // Model kaynagi sirasi: (a) ctx.model?.list, (b) yerel HTTP (service.json port+password).
+    // Parola asla loglanmaz/yanita konmaz; hatalar sanitize edilir.
+    const modelleriGetir = async () => {
+      let ctxHata = null;
+      try {
+        if (typeof ctx.model?.list === "function") {
+          const ham = await ctx.model.list();
+          return { source: "ctx", models: modelNormalize(ham), error: null };
+        }
+      } catch (err) { ctxHata = hataTemizle(err); }
+      let parola = "";
+      try {
+        const svcYolu = STATE_PATH.replace(/model-router\.json$/, "service.json");
+        const hamSvc = await dosyaOku(svcYolu);
+        if (typeof hamSvc !== "string" || hamSvc.length === 0) throw new Error("service okunamadi");
+        let svc = null;
+        try { svc = JSON.parse(hamSvc); } catch { throw new Error("service parse hatasi"); }
+        const port = svc?.port;
+        const pw = svc?.password;
+        if (typeof port !== "number" && typeof port !== "string") throw new Error("service port yok");
+        if (typeof pw !== "string" || pw.length === 0) throw new Error("service password yok");
+        parola = pw;
+        if (typeof fetch !== "function") throw new Error("fetch yok");
+        let b64 = "";
+        try {
+          if (typeof Buffer !== "undefined" && typeof Buffer.from === "function")
+            b64 = Buffer.from(`opencode:${pw}`, "utf8").toString("base64");
+          else if (typeof btoa === "function") b64 = btoa(`opencode:${pw}`);
+          else throw new Error("base64 yok");
+        } catch { throw new Error("auth hazirlanamadi"); }
+        const resp = await fetch(`http://127.0.0.1:${port}/api/model`, {
+          headers: { Authorization: `Basic ${b64}` },
+        });
+        if (!resp.ok) throw new Error(`http ${resp.status}`);
+        const j = await resp.json();
+        return { source: "http", models: modelNormalize(j), error: null };
+      } catch (err) {
+        const m = hataTemizle(err, parola);
+        if (ctxHata != null) return { source: "none", models: [], error: `${ctxHata} | ${m}`.slice(0, 200) };
+        return { source: "none", models: [], error: m };
+      }
+    };
+    // Gorunurluk: drafts.sqlite -> sqliteModelDeger -> JSON user[] icinde visibility==="hide" sayisi.
+    const gorunurlukOku = async () => {
+      try {
+        const appData = (() => { try { return process.env.APPDATA || ""; } catch { return ""; } })();
+        const adaylar = [];
+        if (appData) adaylar.push(`${appData}/ai.opencode.desktop/drafts.sqlite`);
+        if (evKlasoru) {
+          adaylar.push(`${evKlasoru}/Library/Application Support/ai.opencode.desktop/drafts.sqlite`);
+          adaylar.push(`${evKlasoru}/.config/ai.opencode.desktop/drafts.sqlite`);
+        }
+        for (const dbYolu of adaylar) {
+          let ham = null;
+          try { ham = await sqliteModelDeger(dbYolu); } catch {}
+          if (typeof ham !== "string" || ham.length === 0) continue;
+          try {
+            const j = JSON.parse(ham);
+            const dizi = Array.isArray(j?.user) ? j.user : [];
+            let gizliSay = 0;
+            for (const k of dizi) { try { if (k?.visibility === "hide") gizliSay++; } catch {} }
+            return { source: "drafts.sqlite", hidden: gizliSay, present: true };
+          } catch (err) {
+            return { source: "drafts.sqlite", hidden: 0, present: true, error: hataTemizle(err) };
+          }
+        }
+        return { source: "drafts.sqlite", hidden: 0, present: false };
+      } catch (err) {
+        return { source: "drafts.sqlite", hidden: 0, present: false, error: hataTemizle(err) };
+      }
+    };
+    // Ortak istek karsilama: {status, contentType, body} doner; adapter'lar (Bun/node:http) cevirir.
+    const istekKarsila = async (method, pathname) => {
+      try {
+        if (method === "GET" && pathname === "/") {
+          return {
+            status: 200,
+            contentType: "text/html; charset=utf-8",
+            body: `<h1>OpenCode Model Router</h1><p>Sunucu calisiyor.</p><p><a href="/api/probe">/api/probe</a></p>`,
+          };
+        }
+        if (method === "GET" && pathname === "/api/probe") {
+          let agentIdler = [];
+          try { agentIdler = await listAgents(); } catch {}
+          if (!Array.isArray(agentIdler)) agentIdler = [];
+          let modSonuc = null;
+          try { modSonuc = await modelleriGetir(); } catch (err) { modSonuc = { source: "none", models: [], error: hataTemizle(err) }; }
+          const modListe = Array.isArray(modSonuc?.models) ? modSonuc.models : [];
+          let gor = null;
+          try { gor = await gorunurlukOku(); } catch (err) { gor = { source: "drafts.sqlite", hidden: 0, present: false, error: hataTemizle(err) }; }
+          let zincirVar = false;
+          try { zincirVar = (await dosyaOku(STATE_PATH)) != null; } catch {}
+          const govde = {
+            runtime: { hasBun, hasBunServe, nodeHttp: nodeHttpOk, version: nodeSurum },
+            agents: { count: agentIdler.length, sample: agentIdler.slice(0, 5) },
+            models: {
+              source: modSonuc.source,
+              count: modListe.length,
+              sample: modListe.slice(0, 5).map((m) => `${m.providerID}/${m.id}`),
+              ...(modSonuc.error ? { error: modSonuc.error } : {}),
+            },
+            visibility: gor,
+            chains: { file: STATE_PATH, exists: zincirVar },
+          };
+          return { status: 200, contentType: "application/json", body: JSON.stringify(govde) };
+        }
+        if (method === "GET" && pathname === "/api/models") {
+          let modSonuc = null;
+          try { modSonuc = await modelleriGetir(); } catch (err) { modSonuc = { source: "none", models: [], error: hataTemizle(err) }; }
+          const modListe = Array.isArray(modSonuc?.models) ? modSonuc.models : [];
+          return { status: 200, contentType: "application/json", body: JSON.stringify({ source: modSonuc.source, models: modListe }) };
+        }
+        return { status: 404, contentType: "application/json", body: JSON.stringify({ error: "not found" }) };
+      } catch (err) {
+        return { status: 500, contentType: "application/json", body: JSON.stringify({ error: hataTemizle(err) }) };
+      }
+    };
+    // Bind sirasi: once Bun.serve, olmazsa node:http. Basarisizsa logla ve gec (baska port denenmez).
+    let sunucu = null;
+    let baglanti = "";
+    try {
+      if (typeof globalThis.Bun?.serve === "function") {
+        try {
+          sunucu = globalThis.Bun.serve({
+            hostname: "127.0.0.1",
+            port: PROBE_PORT,
+            fetch: async (req) => {
+              let pathname = "/";
+              let method = "GET";
+              try {
+                const u = new URL(req.url);
+                pathname = u.pathname || "/";
+                method = req.method || "GET";
+              } catch {}
+              const yanit = await istekKarsila(method, pathname);
+              try { await logSatir(`${new Date().toISOString()} ${method} ${pathname} ${yanit.status}`); } catch {}
+              return new Response(yanit.body, {
+                status: yanit.status,
+                headers: { "Content-Type": yanit.contentType || "application/json" },
+              });
+            },
+          });
+          baglanti = "Bun.serve";
+        } catch (err) {
+          sunucu = null;
+          try { await logSatir(`${new Date().toISOString()} bind hata (Bun.serve): ${err?.code ?? ""} ${hataTemizle(err)}`); } catch {}
+        }
+      }
+    } catch (err) {
+      sunucu = null;
+      try { await logSatir(`${new Date().toISOString()} bind hata (Bun.serve): ${hataTemizle(err)}`); } catch {}
+    }
+    if (sunucu == null) {
+      try {
+        const http = await import("node:http");
+        const srv = http.createServer((req, res) => {
+          (async () => {
+            let pathname = "/";
+            try {
+              const u = new URL(req.url || "/", "http://127.0.0.1");
+              pathname = u.pathname || "/";
+            } catch {}
+            const method = req.method || "GET";
+            const yanit = await istekKarsila(method, pathname);
+            try { await logSatir(`${new Date().toISOString()} ${method} ${pathname} ${yanit.status}`); } catch {}
+            res.writeHead(yanit.status, { "Content-Type": yanit.contentType || "application/json" });
+            res.end(yanit.body);
+          })().catch((err) => {
+            try {
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: hataTemizle(err) }));
+            } catch {}
+          });
+        });
+        await new Promise((resolve, reject) => {
+          const onHata = (err) => {
+            try { srv.removeListener("listening", onDinle); } catch {}
+            reject(err);
+          };
+          const onDinle = () => {
+            try { srv.removeListener("error", onHata); } catch {}
+            resolve();
+          };
+          srv.once("error", onHata);
+          srv.once("listening", onDinle);
+          srv.listen(PROBE_PORT, "127.0.0.1");
+        });
+        sunucu = srv;
+        baglanti = "node:http";
+      } catch (err) {
+        sunucu = null;
+        try { await logSatir(`${new Date().toISOString()} bind hata (node:http): ${err?.code ?? ""} ${hataTemizle(err)}`); } catch {}
+      }
+    }
+    if (sunucu != null) {
+      try { await logSatir(`${new Date().toISOString()} probe dinliyor ${baglanti} 127.0.0.1:${PROBE_PORT}`); } catch {}
+      try { console.log(`[model-router] probe http 127.0.0.1:${PROBE_PORT} (${baglanti})`); } catch {}
+      track(() => {
+        try { if (typeof sunucu.close === "function") sunucu.close(); } catch {}
+        try { if (typeof sunucu.stop === "function") sunucu.stop(); } catch {}
+      });
+    }
+  } catch { /* probe asla setup'u devirmez */ }
+
   // Dispose: tum registration'lar tek noktadan cozulur (senkron).
   return () => {
     for (const d of disposers.splice(0)) {
