@@ -84,3 +84,36 @@ Repo: https://github.com/sertdisk/OpenCode-Model-Router (MIT)
 ## 4. Turkish summary (report-back)
 
 OpenCode Model Router için tanıtım metinlerini üç kanal için hazırladım: İngilizce blog showcase yazısı (700-900 kelime), r/opencode için Reddit paylaşımı ve Show HN gönderisi. Metinler yalnızca doğrulanmış özelliklere dayanıyor: ajan başına birincil/ikincil/üçüncül model yedeklilik zinciri, http://127.0.0.1:37337 üzerindeki yerel web arayüzü, oh-my-opencode-slim için yerel `agents.<agent>.model` yazımı ve sıfır bağımlılık. Kullanım sayısı, yıldız veya indirme gibi kanıtsız hiçbir iddia kullanılmadı.
+
+---
+
+## 5. Reddit — status and pending modmail (as of 2026-10-06)
+
+**What happened:** The r/opencode post went live and was removed minutes later by Reddit's site-wide filters ("this post was removed by Reddit's filters"). The account (`u/sertdisk`) was created 2026-10-05, has 1 link karma / 0 comment karma, is not suspended and not shadowbanned. r/opencode has no account-age or karma rules — the removal came from Reddit's global spam filter, which typically triggers on brand-new accounts posting self-promo with external links.
+
+**Messaging is blocked too:** Both subreddit modmail (`SendMessageToSubreddit`) and a direct message to a moderator were rejected by the API with `You can't message that user.` New-account restriction, not a subreddit rule. Comments still work.
+
+**Retry plan (once the account is ~7 days old and has some comment karma):**
+1. Resubmit the post from section 2 — link: https://www.reddit.com/r/opencode/comments/1wyp5fw/ (or repost if the old one stays removed).
+2. If the filter removes it again, send the modmail below to `/r/opencode` (or DM `u/likesun` / `u/pollystochastic`).
+
+**Modmail draft:**
+
+- To: `/r/opencode`
+- Subject: `Filter-removed post: could you take a look?`
+
+```
+Hi mods,
+
+I submitted a post to r/opencode about a plugin I built for OpenCode ("I built OpenCode Model Router: per-agent primary/secondary/tertiary model fallback chains with a local web UI"), and Reddit's site-wide filters removed it a few minutes after posting.
+
+My account was created yesterday, so I assume that is what tripped the filter rather than the content itself. The post is here:
+https://www.reddit.com/r/opencode/comments/1wyp5fw/i_built_opencode_model_router_peragent/
+
+If it fits the community rules, could you approve it? If something about it does not fit (self-promo rules, format, posting frequency), I am glad to adjust it or repost it the right way.
+
+Thanks for running the community,
+sertdisk
+```
+
+For a DM to an individual mod, replace the salutation with `Hi,` and the line after the link with `As a mod of r/opencode, could you take a look and approve it if it fits the community rules? ...`.
