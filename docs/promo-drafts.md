@@ -1,6 +1,6 @@
 # Promo Drafts — OpenCode Model Router
 
-All facts below are limited to the verified product facts (MIT, v0.3.1, repo: https://github.com/sertdisk/OpenCode-Model-Router). No usage numbers, stars, downloads, or benchmarks are claimed.
+All facts below are limited to the verified product facts (MIT, v0.3.1, built for OpenCode v2.x — V2 plugin API, repo: https://github.com/sertdisk/OpenCode-Model-Router). No usage numbers, stars, downloads, or benchmarks are claimed.
 
 ---
 
@@ -10,7 +10,7 @@ All facts below are limited to the verified product facts (MIT, v0.3.1, repo: ht
 
 Long sessions tend to end the same way: the primary model starts returning rate-limit errors, or the provider goes quiet mid-task. The work is half done, the context is fully loaded, and the fix is either to wait or to switch models by hand and hope continuity survives. If you run more than one provider — OpenRouter, DeepSeek, and others — you already have somewhere to fail over to. What is usually missing is a way to declare "this agent tries A, then B, then C" and have that applied automatically when A stops answering. Waiting out a rate limit is fine once; doing it repeatedly, across agents and providers, is what gets old.
 
-[OpenCode Model Router](https://github.com/sertdisk/OpenCode-Model-Router) is an OpenCode plugin that adds exactly that. Every OpenCode agent gets its own model fallback chain: a primary, a secondary, and a tertiary model. When the primary model fails or does not respond, the plugin fails over to the second step, and then to the third. The project is MIT-licensed and currently at v0.3.1.
+[OpenCode Model Router](https://github.com/sertdisk/OpenCode-Model-Router) is a plugin for OpenCode v2 that adds exactly that. Every OpenCode agent gets its own model fallback chain: a primary, a secondary, and a tertiary model. When the primary model fails or does not respond, the plugin fails over to the second step, and then to the third. The project is MIT-licensed and currently at v0.3.1; it is built on the OpenCode V2 plugin API.
 
 ## Per-agent chains
 
@@ -37,11 +37,11 @@ git clone https://github.com/sertdisk/OpenCode-Model-Router
 powershell -ExecutionPolicy Bypass -File tools/install-dev.ps1
 ```
 
-The plugin has zero dependencies. The README covers setup in both English and Turkish.
+The plugin has zero dependencies and requires OpenCode v2.x. The README covers setup in both English and Turkish.
 
 ## Limitations
 
-Two constraints are worth stating plainly. First, the plugin orders and fails over between models you already have; it does not provision anything. The models you want in the secondary and tertiary slots must be added and enabled in OpenCode first, or the picker will not show them. Second, the management UI is local-only. It binds to 127.0.0.1, there is no remote management surface, and chains are configured from the machine running OpenCode. If you need to edit chains from another machine, this plugin does not do that.
+Three constraints are worth stating plainly. First, it requires OpenCode v2.x — the plugin is built on the V2 plugin API, so v1 installations are not supported. Second, the plugin orders and fails over between models you already have; it does not provision anything. The models you want in the secondary and tertiary slots must be added and enabled in OpenCode first, or the picker will not show them. Third, the management UI is local-only. It binds to 127.0.0.1, there is no remote management surface, and chains are configured from the machine running OpenCode. If you need to edit chains from another machine, this plugin does not do that.
 
 Beyond that, the scope is narrow on purpose: three slots per agent, one writer for the config, and a backup on every write. If that matches how you run multiple providers, the repository is at https://github.com/sertdisk/OpenCode-Model-Router.
 
@@ -55,7 +55,7 @@ Beyond that, the scope is narrow on purpose: three slots per agent, one writer f
 
 Every long session eventually hits a rate limit or a provider outage on the primary model, right when the context is fully loaded. I kept switching models by hand and losing the thread, so I built a plugin for it.
 
-OpenCode Model Router gives every OpenCode agent its own model fallback chain: primary, secondary, tertiary. If the primary fails or does not respond, it fails over to the second, then the third. A chain step is a model ref `{providerID, id, variant?}`, and the same model on two different providers counts as two steps, which helps when the provider is the thing going down.
+OpenCode Model Router gives every OpenCode agent its own model fallback chain: primary, secondary, tertiary. If the primary fails or does not respond, it fails over to the second, then the third. A chain step is a model ref `{providerID, id, variant?}`, and the same model on two different providers counts as two steps, which helps when the provider is the thing going down. It is built for OpenCode v2.x (the V2 plugin API).
 
 The model picker only shows models and providers already added and enabled in OpenCode (it mirrors Settings > Models via drafts.sqlite), so a chain only contains things my setup can actually call.
 
@@ -73,9 +73,9 @@ Title: Show HN: OpenCode Model Router – per-agent model fallback chains
 
 URL: https://github.com/sertdisk/OpenCode-Model-Router
 
-Text: I built OpenCode Model Router, an OpenCode plugin that gives every agent its own model fallback chain: primary, secondary, tertiary. When the primary model fails or stops responding, requests fail over to the second step, then the third. Each step is a model ref (providerID, id, optional variant), and the same model on two different providers counts as separate steps, so a chain can ride out a provider outage without changing models.
+Text: I built OpenCode Model Router, an OpenCode v2 plugin that gives every agent its own model fallback chain: primary, secondary, tertiary. When the primary model fails or stops responding, requests fail over to the second step, then the third. Each step is a model ref (providerID, id, optional variant), and the same model on two different providers counts as separate steps, so a chain can ride out a provider outage without changing models.
 
-The management UI is a web UI because editing per-agent chains in JSON gets old fast. The plugin serves a small dark-themed UI at http://127.0.0.1:37337, bound to 127.0.0.1 only, with a three-slot chain editor and a provider-grouped model drawer; there is a /model-router terminal command as fallback. Zero dependencies. For oh-my-opencode-slim, chains are written natively as agents.<agent>.model arrays and picked up by its failover engine.
+The management UI is a web UI because editing per-agent chains in JSON gets old fast. The plugin serves a small dark-themed UI at http://127.0.0.1:37337, bound to 127.0.0.1 only, with a three-slot chain editor and a provider-grouped model drawer; there is a /model-router terminal command as fallback. Built for OpenCode v2.x (V2 plugin API); zero dependencies. For oh-my-opencode-slim, chains are written natively as agents.<agent>.model arrays and picked up by its failover engine.
 
 Repo: https://github.com/sertdisk/OpenCode-Model-Router (MIT)
 
@@ -83,7 +83,7 @@ Repo: https://github.com/sertdisk/OpenCode-Model-Router (MIT)
 
 ## 4. Turkish summary (report-back)
 
-OpenCode Model Router için tanıtım metinlerini üç kanal için hazırladım: İngilizce blog showcase yazısı (700-900 kelime), r/opencode için Reddit paylaşımı ve Show HN gönderisi. Metinler yalnızca doğrulanmış özelliklere dayanıyor: ajan başına birincil/ikincil/üçüncül model yedeklilik zinciri, http://127.0.0.1:37337 üzerindeki yerel web arayüzü, oh-my-opencode-slim için yerel `agents.<agent>.model` yazımı ve sıfır bağımlılık. Kullanım sayısı, yıldız veya indirme gibi kanıtsız hiçbir iddia kullanılmadı.
+OpenCode Model Router için tanıtım metinlerini üç kanal için hazırladım: İngilizce blog showcase yazısı (700-900 kelime), r/opencode için Reddit paylaşımı ve Show HN gönderisi. Metinler yalnızca doğrulanmış özelliklere dayanıyor: OpenCode v2.x (V2 eklenti API'si) hedefi, ajan başına birincil/ikincil/üçüncül model yedeklilik zinciri, http://127.0.0.1:37337 üzerindeki yerel web arayüzü, oh-my-opencode-slim için yerel `agents.<agent>.model` yazımı ve sıfır bağımlılık. Kullanım sayısı, yıldız veya indirme gibi kanıtsız hiçbir iddia kullanılmadı.
 
 ---
 
@@ -117,3 +117,9 @@ sertdisk
 ```
 
 For a DM to an individual mod, replace the salutation with `Hi,` and the line after the link with `As a mod of r/opencode, could you take a look and approve it if it fits the community rules? ...`.
+
+---
+
+## 6. V2 note (2026-10-10)
+
+All channel texts above now state that the plugin is built for OpenCode v2.x (V2 plugin API). The repo README/description state it too; the awesome-opencode entry (PR #815) mentions it, and the opencode ecosystem PR was ported to V2 (anomalyco/opencode#54395).
