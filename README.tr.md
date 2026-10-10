@@ -7,12 +7,14 @@
 [![Lisans: MIT](https://img.shields.io/badge/Lisans-MIT-4cc38a.svg)](LICENSE)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6.svg)
 ![Sıfır bağımlılık](https://img.shields.io/badge/bağımlılık-0-4cc38a.svg)
-![OpenCode eklentisi](https://img.shields.io/badge/OpenCode-eklenti-6e7681.svg)
+![OpenCode v2.x eklentisi](https://img.shields.io/badge/OpenCode-v2.x_eklentisi-6e7681.svg)
 ![OMO-Slim uyumlu](https://img.shields.io/badge/uyumlu-oh--my--opencode--slim-4cc38a.svg)
 
 **Her OpenCode ajanına birincil, ikincil ve üçüncül model tanımlayın — yönetmek için de yerel bir web arayüzü.**
 
 **[oh-my-opencode-slim](https://github.com/alvinunreal/oh-my-opencode-slim) (OMO-Slim) için birinci sınıf destek:** zincirler yerel `agents.<ajan>.model` dizileri olarak yazılır ve OMO-Slim'in kendi yedekleme motoru onları devralır.
+
+**OpenCode v2.x için geliştirildi** — OpenCode V2 eklenti API'sini kullanır.
 
 Config dosyalarını elle düzenlemeyi bırakın. Kurulumunuzda gerçekten bulunan modelleri seçin,
 yanıt vermeyene karşı zincirleyin ve tek tıkla uygulayın.
@@ -57,7 +59,7 @@ Zincirler **tek bir JSON state dosyasında** yaşar. Web arayüzü bu dosyayı o
 
 ### Gereksinimler
 
-- **OpenCode** masaüstü uygulaması (v2.x) — [opencode.ai](https://opencode.ai)
+- **OpenCode masaüstü uygulaması v2.x** — [opencode.ai](https://opencode.ai) (eklenti, OpenCode V2 eklenti API'sini kullanır)
 - **Windows** (kurulum betiği Windows yollarına göre; macOS/Linux'ta dosyaları elle kopyalayın — bkz. [Yapılandırma](#yapılandırma))
 - İsteğe bağlı ama önerilir: **oh-my-opencode-slim** eklentisi
 

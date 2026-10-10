@@ -7,12 +7,14 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-4cc38a.svg)](LICENSE)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6.svg)
 ![Zero dependencies](https://img.shields.io/badge/dependencies-0-4cc38a.svg)
-![OpenCode plugin](https://img.shields.io/badge/OpenCode-plugin-6e7681.svg)
+![OpenCode v2.x plugin](https://img.shields.io/badge/OpenCode-v2.x_plugin-6e7681.svg)
 ![Works with OMO-Slim](https://img.shields.io/badge/works%20with-oh--my--opencode--slim-4cc38a.svg)
 
 **Give every OpenCode agent a primary, secondary, and tertiary model — and a local web UI to manage them.**
 
 **First-class support for [oh-my-opencode-slim](https://github.com/alvinunreal/oh-my-opencode-slim) (OMO-Slim):** chains are written as native `agents.<agent>.model` arrays, and OMO-Slim's own failover engine picks them up.
+
+**Built for OpenCode v2.x** — uses the OpenCode V2 plugin API.
 
 Stop editing config files by hand. Pick the models your setup actually has, chain them for failover,
 and apply everything with one click.
@@ -57,7 +59,7 @@ Chains live in **one JSON state file**. The web UI reads and writes it; the plug
 
 ### Requirements
 
-- **OpenCode** desktop app (v2.x) — [opencode.ai](https://opencode.ai)
+- **OpenCode desktop app v2.x** — [opencode.ai](https://opencode.ai) (the plugin uses the OpenCode V2 plugin API)
 - **Windows** (the install script targets Windows paths; macOS/Linux work by copying files manually — see [Configuration](#configuration))
 - Optional but recommended: **oh-my-opencode-slim** plugin
 

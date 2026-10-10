@@ -2,10 +2,11 @@
   "name": "opencode-model-router",
   "version": "0.3.1",
   "type": "module",
-  "description": "Per-agent primary/secondary/tertiary model routing for OpenCode — model fallback chains with a local web UI. Works with oh-my-opencode-slim; zero dependencies.",
+  "description": "Per-agent primary/secondary/tertiary model routing for OpenCode v2 — model fallback chains with a local web UI. Works with oh-my-opencode-slim; zero dependencies.",
   "keywords": [
     "opencode",
     "opencode-plugin",
+    "opencode-v2",
     "ai-agents",
     "model-router",
     "model-fallback",
