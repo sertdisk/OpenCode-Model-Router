@@ -1,7 +1,19 @@
 {
-  "name": "opencode-model-router",
+  "name": "@sertdisk/opencode-v2-agents-model-router",
   "version": "0.3.1",
   "type": "module",
+  "main": "src/model-router.js",
+  "exports": {
+    ".": "./src/model-router.js"
+  },
+  "files": [
+    "src/",
+    "web/",
+    "assets/",
+    "README.md",
+    "README.tr.md",
+    "LICENSE"
+  ],
   "description": "Per-agent primary/secondary/tertiary model routing for OpenCode v2 — model fallback chains with a local web UI. Works with oh-my-opencode-slim; zero dependencies.",
   "keywords": [
     "opencode",
